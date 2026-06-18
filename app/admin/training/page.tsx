@@ -1,5 +1,5 @@
 import { createServiceClient } from '@/lib/supabase/server'
-import PromptEditor from '@/components/admin/PromptEditor'
+import SystemContextsEditor from '@/components/admin/SystemContextsEditor'
 import TicketToKnowledge from '@/components/admin/TicketToKnowledge'
 import AIRulesEditor from '@/components/admin/AIRulesEditor'
 import AICostTracker from '@/components/admin/AICostTracker'
@@ -9,13 +9,13 @@ export default async function TrainingPage() {
   const supabase = await createServiceClient()
 
   const [
-    { data: promptConfig },
+    { data: contextsConfig },
     { data: rulesConfig },
     { data: costLimitConfig },
     { data: closedTickets },
     { data: usageThisMonth },
   ] = await Promise.all([
-    supabase.from('ai_config').select('value').eq('key', 'system_context').single(),
+    supabase.from('ai_config').select('value').eq('key', 'system_contexts').single(),
     supabase.from('ai_config').select('value').eq('key', 'behavior_rules').single(),
     supabase.from('ai_config').select('value').eq('key', 'cost_limit_usd').single(),
     supabase
@@ -30,6 +30,11 @@ export default async function TrainingPage() {
       .select('input_tokens, output_tokens, cost_usd')
       .gte('created_at', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()),
   ])
+
+  const contexts = (() => {
+    try { return contextsConfig?.value ? JSON.parse(contextsConfig.value) : [] }
+    catch { return [] }
+  })()
 
   const rules = (() => {
     try { return rulesConfig?.value ? JSON.parse(rulesConfig.value) : [] }
@@ -79,8 +84,8 @@ export default async function TrainingPage() {
         {/* Behavior rules */}
         <AIRulesEditor initialRules={rules} />
 
-        {/* System context prompt */}
-        <PromptEditor currentValue={promptConfig?.value ?? ''} />
+        {/* System contexts — multiple sections merged for AI */}
+        <SystemContextsEditor initialContexts={contexts} />
 
         {/* Document upload */}
         <div style={{ background: 'var(--surface)', borderRadius: 20, boxShadow: 'var(--shadow-md)', overflow: 'hidden' }}>

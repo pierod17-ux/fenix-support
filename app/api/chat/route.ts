@@ -36,17 +36,29 @@ Usa il tool \`escalate_to_technician\` SOLO quando:
 Quando esegui l'escalation, fornisci un riepilogo chiaro di tutto ciò che è stato tentato.`
 
 interface BehaviorRule { id: string; category: string; text: string }
+interface SystemContext { id: string; title: string; content: string }
 
 async function buildSystemPrompt(): Promise<string> {
   try {
     const supabase = await createServiceClient()
-    const [{ data: ctxData }, { data: rulesData }] = await Promise.all([
+    const [{ data: ctxsData }, { data: ctxData }, { data: rulesData }] = await Promise.all([
+      supabase.from('ai_config').select('value').eq('key', 'system_contexts').single(),
       supabase.from('ai_config').select('value').eq('key', 'system_context').single(),
       supabase.from('ai_config').select('value').eq('key', 'behavior_rules').single(),
     ])
 
-    const systemContext = ctxData?.value ||
-      'Macchine Endosphere per pressoterapia. Modelli: Endosphere Body (corpo), Endosphere Face (viso). Componenti: motore brushless, pompa pressione, sensori, display LVGL, ESP32-S3.'
+    // Prefer new multi-section format, fall back to legacy single-text, then built-in default
+    let systemContext = 'Macchine Endosphere per pressoterapia. Modelli: Endosphere Body (corpo), Endosphere Face (viso). Componenti: motore brushless, pompa pressione, sensori, display LVGL, ESP32-S3.'
+    if (ctxsData?.value) {
+      const contexts: SystemContext[] = JSON.parse(ctxsData.value)
+      if (contexts.length > 0) {
+        systemContext = contexts
+          .map(c => (c.title ? `### ${c.title}\n${c.content}` : c.content))
+          .join('\n\n')
+      }
+    } else if (ctxData?.value) {
+      systemContext = ctxData.value
+    }
 
     let rulesSection = ''
     if (rulesData?.value) {
