@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { format } from 'date-fns'
 import { it } from 'date-fns/locale'
@@ -21,7 +21,7 @@ const priorityLabel: Record<string, string> = {
 }
 
 export default async function AdminTickets() {
-  const supabase = await createClient()
+  const supabase = await createServiceClient()
 
   const { data: tickets } = await supabase
     .from('support_tickets')
