@@ -13,12 +13,30 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     .eq('id', user.id)
     .single()
 
+  const displayName = profile?.display_name ?? user.email ?? ''
+
   return (
-    <div className="flex min-h-screen">
-      <AdminSidebar role={profile?.role ?? 'technician'} displayName={profile?.display_name ?? user.email ?? ''} />
-      <main className="flex-1 md:ml-60 pb-20 md:pb-0">
+    <div style={{ minHeight: '100dvh', background: 'var(--background)' }}>
+      <AdminSidebar
+        role={profile?.role ?? 'technician'}
+        displayName={displayName}
+      />
+      <main style={{
+        paddingLeft: 0,
+        paddingBottom: 'calc(72px + env(safe-area-inset-bottom, 0px))',
+      }}
+        className="admin-main"
+      >
         {children}
       </main>
+      <style>{`
+        @media (min-width: 768px) {
+          .admin-main {
+            padding-left: 240px !important;
+            padding-bottom: 0 !important;
+          }
+        }
+      `}</style>
     </div>
   )
 }

@@ -5,14 +5,12 @@ import TicketToKnowledge from '@/components/admin/TicketToKnowledge'
 export default async function TrainingPage() {
   const supabase = await createClient()
 
-  // Carica il prompt di sistema corrente
   const { data: promptConfig } = await supabase
     .from('ai_config')
     .select('*')
     .eq('key', 'system_context')
     .single()
 
-  // Ticket chiusi e risolti che non sono ancora in KB
   const { data: closedTickets } = await supabase
     .from('support_tickets')
     .select('id, subject, ai_summary, resolved_at, machine_model')
@@ -22,30 +20,44 @@ export default async function TrainingPage() {
     .limit(20)
 
   return (
-    <div className="p-6 space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Training AI</h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
+    <div style={{ maxWidth: 900, margin: '0 auto', paddingBottom: 40 }}>
+
+      {/* Page header */}
+      <div style={{
+        padding: '24px 24px 16px',
+        position: 'sticky', top: 0, zIndex: 10,
+        background: 'rgba(245,245,247,0.85)',
+        backdropFilter: 'saturate(180%) blur(20px)',
+        WebkitBackdropFilter: 'saturate(180%) blur(20px)',
+        borderBottom: '1px solid var(--border)',
+        marginBottom: 24,
+      }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.4px' }}>
+          Training AI
+        </h1>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>
           Personalizza il comportamento dell&apos;assistente e impara dai ticket risolti
         </p>
       </div>
 
-      {/* Prompt di sistema */}
-      <PromptEditor currentValue={promptConfig?.value ?? ''} />
+      <div style={{ padding: '0 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <PromptEditor currentValue={promptConfig?.value ?? ''} />
 
-      {/* Ticket → Knowledge Base */}
-      <div className="rounded-2xl overflow-hidden"
-        style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <div className="px-5 py-4" style={{ borderBottom: '1px solid var(--border)' }}>
-          <h2 className="font-semibold" style={{ color: 'var(--text-primary)' }}>
-            Ticket risolti → Knowledge Base
-          </h2>
-          <p className="text-sm mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-            Aggiungi le soluzioni dei ticket chiusi alla knowledge base per addestrare l&apos;AI
-          </p>
-        </div>
-        <div className="p-5">
-          <TicketToKnowledge tickets={closedTickets ?? []} />
+        <div style={{
+          background: 'var(--surface)', borderRadius: 20,
+          boxShadow: 'var(--shadow-md)', overflow: 'hidden',
+        }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
+            <h2 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>
+              Ticket risolti → Knowledge Base
+            </h2>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>
+              Aggiungi le soluzioni dei ticket chiusi per addestrare l&apos;AI
+            </p>
+          </div>
+          <div style={{ padding: 20 }}>
+            <TicketToKnowledge tickets={closedTickets ?? []} />
+          </div>
         </div>
       </div>
     </div>

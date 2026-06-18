@@ -17,18 +17,32 @@ export default async function SchedulePage() {
     .order('start_time')
 
   return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Reperibilità Tecnici</h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-          Configura i turni: quando un ticket viene escalato, verrà notificato il tecnico di turno
+    <div style={{ maxWidth: 900, margin: '0 auto', paddingBottom: 40 }}>
+
+      {/* Page header */}
+      <div style={{
+        padding: '24px 24px 16px',
+        position: 'sticky', top: 0, zIndex: 10,
+        background: 'rgba(245,245,247,0.85)',
+        backdropFilter: 'saturate(180%) blur(20px)',
+        WebkitBackdropFilter: 'saturate(180%) blur(20px)',
+        borderBottom: '1px solid var(--border)',
+        marginBottom: 24,
+      }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.4px' }}>
+          Reperibilità Tecnici
+        </h1>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>
+          Configura i turni: il tecnico di turno verrà notificato ad ogni escalation
         </p>
       </div>
 
-      <ScheduleEditor
-        technicians={technicians ?? []}
-        schedules={schedules ?? []}
-      />
+      <div style={{ padding: '0 24px' }}>
+        <ScheduleEditor
+          technicians={technicians ?? []}
+          schedules={schedules ?? []}
+        />
+      </div>
     </div>
   )
 }

@@ -5,11 +5,11 @@ import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 const nav = [
-  { href: '/admin', label: 'Ticket', icon: <IconTicket /> },
-  { href: '/admin/knowledge', label: 'Knowledge Base', icon: <IconBook /> },
-  { href: '/admin/training', label: 'Training AI', icon: <IconBrain /> },
-  { href: '/admin/schedule', label: 'Reperibilità', icon: <IconClock /> },
-  { href: '/admin/analytics', label: 'Analytics', icon: <IconChart /> },
+  { href: '/admin', label: 'Ticket', icon: IconTicket },
+  { href: '/admin/knowledge', label: 'Knowledge Base', icon: IconBook },
+  { href: '/admin/training', label: 'Training AI', icon: IconBrain },
+  { href: '/admin/schedule', label: 'Reperibilità', icon: IconClock },
+  { href: '/admin/analytics', label: 'Analytics', icon: IconChart },
 ]
 
 export default function AdminSidebar({ role, displayName }: { role: string; displayName: string }) {
@@ -22,87 +22,180 @@ export default function AdminSidebar({ role, displayName }: { role: string; disp
     router.push('/login')
   }
 
+  const initials = displayName
+    .split(' ')
+    .map(w => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
+
   return (
     <>
-      <aside className="hidden md:flex flex-col w-60 h-screen fixed left-0 top-0 z-40"
-        style={{ background: 'var(--surface)', borderRight: '1px solid var(--border)' }}>
-        <div className="p-6 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-            style={{ background: 'var(--accent)' }}>
+      {/* Desktop sidebar */}
+      <aside style={{
+        display: 'none',
+        position: 'fixed', left: 0, top: 0, bottom: 0, width: 240, zIndex: 40,
+        flexDirection: 'column',
+        background: 'rgba(255,255,255,0.85)',
+        backdropFilter: 'saturate(180%) blur(20px)',
+        WebkitBackdropFilter: 'saturate(180%) blur(20px)',
+        borderRight: '1px solid var(--border)',
+        boxShadow: '2px 0 12px rgba(0,0,0,0.05)',
+      }}
+        className="md-sidebar"
+      >
+        {/* Logo */}
+        <div style={{ padding: '20px 16px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+            background: 'linear-gradient(135deg, #0071e3 0%, #00a2ff 100%)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 2px 8px rgba(0,113,227,0.35)',
+          }}>
             <svg width="16" height="16" viewBox="0 0 32 32" fill="none">
               <circle cx="16" cy="16" r="10" stroke="white" strokeWidth="2.5"/>
               <path d="M10 16 L14 20 L22 12" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </div>
           <div>
-            <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Fenix Support</p>
-            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{role === 'admin' ? 'Amministratore' : 'Tecnico'}</p>
+            <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.2px' }}>
+              Fenix Support
+            </p>
+            <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 1 }}>
+              {role === 'admin' ? 'Amministratore' : 'Tecnico'}
+            </p>
           </div>
         </div>
 
-        <nav className="flex-1 px-3 space-y-1">
+        {/* Divider */}
+        <div style={{ height: 1, background: 'var(--border)', margin: '0 16px 8px' }} />
+
+        {/* Nav */}
+        <nav style={{ flex: 1, padding: '4px 8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
           {nav.map(item => {
             const active = pathname === item.href || (item.href !== '/admin' && pathname.startsWith(item.href))
             return (
-              <Link key={item.href} href={item.href}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all"
-                style={{
-                  background: active ? 'var(--accent)' : 'transparent',
-                  color: active ? 'white' : 'var(--text-secondary)',
-                }}>
-                <span className="w-4 h-4 flex-shrink-0">{item.icon}</span>
+              <Link key={item.href} href={item.href} style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '8px 12px', borderRadius: 10,
+                fontSize: 14, fontWeight: active ? 600 : 400,
+                color: active ? 'var(--accent)' : 'var(--text-secondary)',
+                background: active ? 'var(--accent-light)' : 'transparent',
+                textDecoration: 'none',
+                transition: 'all 0.15s',
+              }}>
+                <span style={{ width: 18, height: 18, flexShrink: 0, color: active ? 'var(--accent)' : 'var(--text-tertiary)' }}>
+                  <item.icon />
+                </span>
                 {item.label}
               </Link>
             )
           })}
         </nav>
 
-        <div className="p-4 border-t" style={{ borderColor: 'var(--border)' }}>
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
-              style={{ background: 'var(--surface-3)', color: 'var(--text-primary)' }}>
-              {displayName.charAt(0).toUpperCase()}
+        {/* User footer */}
+        <div style={{ padding: 12, borderTop: '1px solid var(--border)' }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '10px 12px', borderRadius: 12,
+            background: 'var(--surface-2)',
+            marginBottom: 6,
+          }}>
+            <div style={{
+              width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+              background: 'linear-gradient(135deg, #0071e3 0%, #00a2ff 100%)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 12, fontWeight: 700, color: 'white',
+            }}>
+              {initials || '?'}
             </div>
-            <p className="text-sm truncate" style={{ color: 'var(--text-secondary)' }}>{displayName}</p>
+            <div style={{ minWidth: 0 }}>
+              <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', truncate: 'true' }}>
+                {displayName}
+              </p>
+              <p style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                {role === 'admin' ? 'Admin' : 'Tecnico'}
+              </p>
+            </div>
           </div>
-          <button onClick={handleLogout}
-            className="w-full text-left px-3 py-2 rounded-xl text-sm"
-            style={{ color: 'var(--danger)' }}>
+          <button onClick={handleLogout} style={{
+            width: '100%', textAlign: 'left', padding: '8px 12px', borderRadius: 10,
+            fontSize: 13, fontWeight: 500, color: 'var(--danger)',
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 8,
+            transition: 'background 0.15s',
+          }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,59,48,0.08)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          >
+            <IconLogout />
             Esci
           </button>
         </div>
       </aside>
 
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around px-2 py-2"
-        style={{ background: 'var(--surface)', borderTop: '1px solid var(--border)' }}>
+      {/* Mobile bottom tab bar */}
+      <nav style={{
+        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 40,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-around',
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        background: 'rgba(255,255,255,0.92)',
+        backdropFilter: 'saturate(180%) blur(20px)',
+        WebkitBackdropFilter: 'saturate(180%) blur(20px)',
+        borderTop: '1px solid var(--border)',
+      }}
+        className="mobile-tab-bar"
+      >
         {nav.slice(0, 4).map(item => {
           const active = pathname === item.href || (item.href !== '/admin' && pathname.startsWith(item.href))
           return (
-            <Link key={item.href} href={item.href}
-              className="flex flex-col items-center gap-1 px-2 py-1.5 rounded-xl text-xs"
-              style={{ color: active ? 'var(--accent)' : 'var(--text-secondary)' }}>
-              <span className="w-5 h-5">{item.icon}</span>
+            <Link key={item.href} href={item.href} style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+              padding: '10px 8px',
+              color: active ? 'var(--accent)' : 'var(--text-tertiary)',
+              textDecoration: 'none', fontSize: 10, fontWeight: active ? 600 : 400,
+              minWidth: 60,
+            }}>
+              <span style={{ width: 24, height: 24 }}><item.icon /></span>
               {item.label.split(' ')[0]}
             </Link>
           )
         })}
+        <button onClick={handleLogout} style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+          padding: '10px 8px', background: 'none', border: 'none', cursor: 'pointer',
+          color: 'var(--danger)', fontSize: 10, fontWeight: 400, minWidth: 60,
+        }}>
+          <span style={{ width: 24, height: 24 }}><IconLogout /></span>
+          Esci
+        </button>
       </nav>
+
+      <style>{`
+        @media (min-width: 768px) {
+          .md-sidebar { display: flex !important; }
+          .mobile-tab-bar { display: none !important; }
+        }
+      `}</style>
     </>
   )
 }
 
 function IconTicket() {
-  return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1" y="3" width="14" height="10" rx="2"/><path d="M5 3v10M1 8h4"/></svg>
+  return <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="16" height="12" rx="2.5"/><path d="M6 5V4a2 2 0 014 0v1M2 10h4M6 10v4"/></svg>
 }
 function IconBook() {
-  return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 1h8a2 2 0 012 2v10a2 2 0 01-2 2H3a2 2 0 01-2-2V3a2 2 0 012-2z"/><path d="M5 5h6M5 8h6M5 11h4"/></svg>
+  return <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 2h9a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V4a2 2 0 012-2z"/><path d="M7 7h6M7 10h6M7 13h4"/></svg>
 }
 function IconBrain() {
-  return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M8 2C5.5 2 3 4 3 7c0 1.5.6 2.8 1.5 3.7V13h7v-2.3C12.4 9.8 13 8.5 13 7c0-3-2.5-5-5-5z"/><path d="M6 13v1M10 13v1M5 7c0-1.7 1.3-3 3-3"/></svg>
+  return <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M10 3C7 3 4.5 5 4.5 8c0 1.5.6 2.8 1.5 3.7V15h8v-3.3c.9-.9 1.5-2.2 1.5-3.7 0-3-2.5-5-5.5-5z"/><path d="M7.5 15v1.5M12.5 15v1.5M7 8c0-1.7 1.3-3 3-3"/></svg>
 }
 function IconClock() {
-  return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 2"/></svg>
+  return <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><circle cx="10" cy="10" r="7"/><path d="M10 6.5v3.8l2.5 2.2"/></svg>
 }
 function IconChart() {
-  return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M1 14 L5 9 L8 11 L11 5 L15 2"/><path d="M1 14h14"/></svg>
+  return <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M2 17L7 11l3.5 3L14 7l4-4"/><path d="M2 17h16"/></svg>
+}
+function IconLogout() {
+  return <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M13 3h3a1 1 0 011 1v12a1 1 0 01-1 1h-3M9 14l4-4-4-4M13 10H4"/></svg>
 }
