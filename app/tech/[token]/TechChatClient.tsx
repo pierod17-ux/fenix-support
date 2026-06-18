@@ -84,8 +84,7 @@ export default function TechChatClient({
     return () => clearInterval(id)
   }, [poll])
 
-  async function sendMessage(e: React.FormEvent) {
-    e.preventDefault()
+  async function doSend() {
     if (!input.trim() || sending || closed) return
     setSending(true)
     const res = await fetch(`/api/direct-chat/${token}`, {
@@ -100,6 +99,11 @@ export default function TechChatClient({
       setInput('')
     }
     setSending(false)
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    void doSend()
   }
 
   async function uploadFile(file: File) {
@@ -247,7 +251,7 @@ export default function TechChatClient({
             <p style={{ fontSize: 14, color: '#aeaeb2', margin: 0 }}>Chat chiusa — non è possibile inviare nuovi messaggi</p>
           </div>
         ) : (
-          <form onSubmit={sendMessage} style={{
+          <form onSubmit={handleSubmit} style={{
             maxWidth: 680, margin: '0 auto',
             display: 'flex', gap: 10, alignItems: 'flex-end',
           }}>
@@ -278,7 +282,7 @@ export default function TechChatClient({
                 e.target.style.height = 'auto'
                 e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px'
               }}
-              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(e as unknown as React.FormEvent) } }}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void doSend() } }}
               placeholder="Rispondi al cliente..."
               rows={1}
               style={{

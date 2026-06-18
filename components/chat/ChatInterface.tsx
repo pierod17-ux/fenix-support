@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 interface Message {
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'technician'
   content: string
 }
 
@@ -54,14 +54,14 @@ export default function ChatInterface() {
         const res = await fetch(`/api/direct-chat/${directChatToken}`)
         if (!res.ok) return
         const data = await res.json()
-        const techMsgs: { role: string; content: string; created_at: string }[] = (data.messages ?? [])
+        const techMsgs: { role: string; content: string | null; created_at: string }[] = (data.messages ?? [])
           .filter((m: { role: string }) => m.role === 'technician')
         if (techMsgs.length > 0) {
           setMessages(prev => {
             const existing = new Set(prev.map(m => m.role + '|' + m.content))
             const fresh = techMsgs
-              .filter(m => !existing.has('technician|' + m.content))
-              .map(m => ({ role: 'technician' as const, content: m.content }))
+              .filter(m => m.content && !existing.has('technician|' + m.content))
+              .map(m => ({ role: 'technician' as const, content: m.content! }))
             return fresh.length > 0 ? [...prev, ...fresh] : prev
           })
         }
