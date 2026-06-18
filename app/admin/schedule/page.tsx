@@ -1,20 +1,21 @@
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/server'
 import ScheduleEditor from '@/components/admin/ScheduleEditor'
 
 export default async function SchedulePage() {
-  const supabase = await createClient()
+  const supabase = await createServiceClient()
 
-  const { data: technicians } = await supabase
-    .from('technician_profiles')
-    .select('id, display_name, whatsapp, email, role')
-    .order('display_name')
-
-  const { data: schedules } = await supabase
-    .from('technician_schedules')
-    .select('*')
-    .eq('is_active', true)
-    .order('day_of_week')
-    .order('start_time')
+  const [{ data: technicians }, { data: schedules }] = await Promise.all([
+    supabase
+      .from('technician_profiles')
+      .select('id, display_name, email, phone, whatsapp, role, account_status')
+      .order('display_name'),
+    supabase
+      .from('technician_schedules')
+      .select('*')
+      .eq('is_active', true)
+      .order('day_of_week')
+      .order('start_time'),
+  ])
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', paddingBottom: 40 }}>
@@ -30,10 +31,10 @@ export default async function SchedulePage() {
         marginBottom: 24,
       }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.4px' }}>
-          Reperibilità Tecnici
+          Reperibilità
         </h1>
         <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>
-          Configura i turni: il tecnico di turno verrà notificato ad ogni escalation
+          Gestisci i tecnici e i turni settimanali di reperibilità
         </p>
       </div>
 

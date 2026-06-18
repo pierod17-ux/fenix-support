@@ -34,14 +34,62 @@ export default function ChatInterface() {
   const [loading, setLoading] = useState(false)
   const [ticketId, setTicketId] = useState<string | null>(null)
   const [escalated, setEscalated] = useState(false)
+  const [directChatActive, setDirectChatActive] = useState(false)
+  const [directChatToken, setDirectChatToken] = useState<string | null>(null)
   const [streamingText, setStreamingText] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const supabase = createClient()
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, streamingText])
+
+  // Poll for technician messages when direct chat is active
+  useEffect(() => {
+    if (!directChatActive || !directChatToken) return
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/direct-chat/${directChatToken}`)
+        if (!res.ok) return
+        const data = await res.json()
+        const techMsgs: { role: string; content: string; created_at: string }[] = (data.messages ?? [])
+          .filter((m: { role: string }) => m.role === 'technician')
+        if (techMsgs.length > 0) {
+          setMessages(prev => {
+            const existing = new Set(prev.map(m => m.role + '|' + m.content))
+            const fresh = techMsgs
+              .filter(m => !existing.has('technician|' + m.content))
+              .map(m => ({ role: 'technician' as const, content: m.content }))
+            return fresh.length > 0 ? [...prev, ...fresh] : prev
+          })
+        }
+      } catch { /* ignore */ }
+    }
+    pollRef.current = setInterval(poll, 5000)
+    return () => { if (pollRef.current) clearInterval(pollRef.current) }
+  }, [directChatActive, directChatToken])
+
+  async function requestDirectChat() {
+    if (!ticketId) return
+    try {
+      const res = await fetch('/api/direct-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticketId }),
+      })
+      if (res.ok) {
+        const { accessToken } = await res.json()
+        setDirectChatToken(accessToken)
+        setDirectChatActive(true)
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: '✅ Chat diretta aperta! Il tecnico di turno è stato notificato e si unirà a breve.',
+        }])
+      }
+    } catch { /* ignore */ }
+  }
 
   async function startChat(e: React.FormEvent) {
     e.preventDefault()
@@ -84,6 +132,12 @@ export default function ChatInterface() {
 
     if (ticketId) {
       await supabase.from('ticket_messages').insert({ ticket_id: ticketId, role: 'user', content: text })
+    }
+
+    // In direct chat mode, skip AI — just save the message and wait for tech reply
+    if (directChatActive) {
+      setLoading(false)
+      return
     }
 
     try {
@@ -132,7 +186,7 @@ export default function ChatInterface() {
     } finally {
       setLoading(false)
     }
-  }, [messages, loading, ticketId, customerInfo, supabase])
+  }, [messages, loading, ticketId, customerInfo, supabase, directChatActive])
 
   if (phase === 'form') {
     return (
@@ -308,13 +362,19 @@ export default function ChatInterface() {
           </div>
         )}
 
-        {escalated && <EscalationCard ticketId={ticketId} />}
+        {escalated && (
+          <EscalationCard
+            ticketId={ticketId}
+            onRequestChat={requestDirectChat}
+            directChatActive={directChatActive}
+          />
+        )}
 
         <div ref={bottomRef} />
       </div>
 
-      {/* Input */}
-      {!escalated && (
+      {/* Input — hidden after escalation unless direct chat is active */}
+      {(!escalated || directChatActive) && (
         <div style={{
           flexShrink: 0,
           padding: '10px 12px',
@@ -400,6 +460,7 @@ function Avatar() {
 
 function Bubble({ role, content, streaming }: { role: string; content: string; streaming?: boolean }) {
   const isUser = role === 'user'
+  const isTech = role === 'technician'
 
   const html = content
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
@@ -422,6 +483,35 @@ function Bubble({ role, content, streaming }: { role: string; content: string; s
     )
   }
 
+  if (isTech) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+        <div style={{
+          width: 30, height: 30, borderRadius: 10,
+          background: 'linear-gradient(135deg, #34c759 0%, #30d158 100%)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2,
+          fontSize: 11, fontWeight: 700, color: 'white',
+        }}>
+          T
+        </div>
+        <div>
+          <p style={{ fontSize: 10, color: 'var(--text-tertiary)', marginBottom: 3, paddingLeft: 2 }}>Tecnico</p>
+          <div
+            style={{
+              maxWidth: '80%', padding: '10px 14px',
+              borderRadius: 18, borderBottomLeftRadius: 4,
+              background: 'rgba(52,199,89,0.1)', color: 'var(--text-primary)',
+              fontSize: 15, lineHeight: 1.5,
+              border: '1px solid rgba(52,199,89,0.2)',
+            }}
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
       <Avatar />
@@ -439,7 +529,13 @@ function Bubble({ role, content, streaming }: { role: string; content: string; s
   )
 }
 
-function EscalationCard({ ticketId }: { ticketId: string | null }) {
+function EscalationCard({
+  ticketId, onRequestChat, directChatActive,
+}: {
+  ticketId: string | null
+  onRequestChat: () => void
+  directChatActive: boolean
+}) {
   return (
     <div style={{
       background: 'var(--surface)', borderRadius: 16,
@@ -461,7 +557,7 @@ function EscalationCard({ ticketId }: { ticketId: string | null }) {
       <h3 style={{ fontWeight: 600, fontSize: 16, color: 'var(--text-primary)', marginBottom: 6 }}>
         Tecnico notificato
       </h3>
-      <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 12 }}>
+      <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 16 }}>
         Il tecnico di turno è stato avvisato e ti ricontatterà al più presto.
       </p>
       {ticketId && (
@@ -472,6 +568,29 @@ function EscalationCard({ ticketId }: { ticketId: string | null }) {
         }}>
           Ticket #{ticketId.slice(0, 8).toUpperCase()}
         </span>
+      )}
+      {!directChatActive && (
+        <div style={{ marginTop: 16 }}>
+          <button onClick={onRequestChat} style={{
+            padding: '10px 22px', borderRadius: 20, border: 'none', cursor: 'pointer',
+            background: 'var(--accent)', color: 'white',
+            fontSize: 14, fontWeight: 600,
+            boxShadow: '0 2px 8px rgba(0,113,227,0.3)',
+          }}>
+            Apri chat diretta con il tecnico
+          </button>
+          <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 8 }}>
+            Il tecnico riceverà un link per connettersi alla chat
+          </p>
+        </div>
+      )}
+      {directChatActive && (
+        <div style={{
+          marginTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+        }}>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#34c759' }} />
+          <span style={{ fontSize: 13, color: '#34c759', fontWeight: 500 }}>Chat diretta attiva</span>
+        </div>
       )}
     </div>
   )
