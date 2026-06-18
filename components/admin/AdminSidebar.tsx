@@ -110,7 +110,7 @@ export default function AdminSidebar({ role, displayName }: { role: string; disp
               {initials || '?'}
             </div>
             <div style={{ minWidth: 0 }}>
-              <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', truncate: 'true' }}>
+              <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {displayName}
               </p>
               <p style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
