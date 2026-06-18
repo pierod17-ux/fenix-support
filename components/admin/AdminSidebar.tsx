@@ -119,16 +119,16 @@ export default function AdminSidebar({ role, displayName }: { role: string; disp
             </div>
           </div>
           <button onClick={handleLogout} style={{
-            width: '100%', textAlign: 'left', padding: '8px 12px', borderRadius: 10,
-            fontSize: 13, fontWeight: 500, color: 'var(--danger)',
+            width: '100%', textAlign: 'left', padding: '5px 10px', borderRadius: 8,
+            fontSize: 11, fontWeight: 400, color: 'var(--text-tertiary)',
             background: 'transparent', border: 'none', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', gap: 8,
-            transition: 'background 0.15s',
+            display: 'flex', alignItems: 'center', gap: 6,
+            transition: 'all 0.15s',
           }}
-            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,59,48,0.08)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,59,48,0.08)'; e.currentTarget.style.color = 'var(--danger)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-tertiary)' }}
           >
-            <IconLogout />
+            <span style={{ width: 14, height: 14, display: 'flex', alignItems: 'center' }}><IconLogout /></span>
             Esci
           </button>
         </div>
