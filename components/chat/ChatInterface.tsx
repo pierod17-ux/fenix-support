@@ -4,9 +4,8 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 interface Message {
-  role: 'user' | 'assistant' | 'system'
+  role: 'user' | 'assistant'
   content: string
-  id?: string
 }
 
 interface CustomerInfo {
@@ -37,6 +36,7 @@ export default function ChatInterface() {
   const [escalated, setEscalated] = useState(false)
   const [streamingText, setStreamingText] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
   const supabase = createClient()
 
   useEffect(() => {
@@ -47,7 +47,6 @@ export default function ChatInterface() {
     e.preventDefault()
     if (!customerInfo.name || !customerInfo.machineModel) return
 
-    // Crea il ticket nel DB
     const { data: ticket } = await supabase
       .from('support_tickets')
       .insert({
@@ -66,11 +65,10 @@ export default function ChatInterface() {
 
     if (ticket) setTicketId(ticket.id)
 
-    const welcome: Message = {
+    setMessages([{
       role: 'assistant',
-      content: `Ciao **${customerInfo.name}**! Sono l'assistente tecnico Fenix.\n\nSono qui per aiutarti con la tua macchina **${customerInfo.machineModel}**${customerInfo.machineSerial ? ` (S/N: ${customerInfo.machineSerial})` : ''}.\n\nDescrivimi il problema che stai riscontrando: cosa succede esattamente?`,
-    }
-    setMessages([welcome])
+      content: `Ciao **${customerInfo.name}**! Sono l'assistente tecnico Fenix.\n\nSono qui per aiutarti con la tua macchina **${customerInfo.machineModel}**${customerInfo.machineSerial ? ` (S/N: ${customerInfo.machineSerial})` : ''}.\n\nDescrivimi il problema che stai riscontrando.`,
+    }])
     setPhase('chat')
   }
 
@@ -84,24 +82,15 @@ export default function ChatInterface() {
     setLoading(true)
     setStreamingText('')
 
-    // Salva messaggio utente nel DB
     if (ticketId) {
-      await supabase.from('ticket_messages').insert({
-        ticket_id: ticketId,
-        role: 'user',
-        content: text,
-      })
+      await supabase.from('ticket_messages').insert({ ticket_id: ticketId, role: 'user', content: text })
     }
 
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: newMessages.map(m => ({ role: m.role === 'system' ? 'assistant' : m.role, content: m.content })),
-          ticketId,
-          customerInfo,
-        }),
+        body: JSON.stringify({ messages: newMessages, ticketId, customerInfo }),
       })
 
       if (!res.ok || !res.body) throw new Error('Stream error')
@@ -115,13 +104,10 @@ export default function ChatInterface() {
         if (done) break
 
         const chunk = decoder.decode(value)
-        const lines = chunk.split('\n')
-
-        for (const line of lines) {
+        for (const line of chunk.split('\n')) {
           if (!line.startsWith('data: ')) continue
           const data = line.slice(6).trim()
           if (data === '[DONE]') break
-
           try {
             const parsed = JSON.parse(data)
             if (parsed.type === 'text') {
@@ -150,193 +136,304 @@ export default function ChatInterface() {
 
   if (phase === 'form') {
     return (
-      <div className="flex items-center justify-center min-h-full p-4">
-        <div className="w-full max-w-md">
-          <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-            <div className="px-6 py-5" style={{ borderBottom: '1px solid var(--border)' }}>
-              <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Avvia assistenza tecnica</h1>
-              <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-                Inserisci i tuoi dati per iniziare la chat con l&apos;assistente AI
-              </p>
+      <div style={{
+        flex: 1, overflowY: 'auto', padding: '24px 16px',
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+      }}>
+        <div style={{ width: '100%', maxWidth: 420, paddingBottom: 32 }}>
+          {/* Hero */}
+          <div style={{ textAlign: 'center', marginBottom: 28 }}>
+            <div style={{
+              width: 64, height: 64, borderRadius: 18,
+              background: 'linear-gradient(135deg, #0071e3 0%, #00a2ff 100%)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              margin: '0 auto 16px', boxShadow: '0 4px 16px rgba(0,113,227,0.3)',
+            }}>
+              <svg width="28" height="28" viewBox="0 0 32 32" fill="none">
+                <circle cx="16" cy="16" r="10" stroke="white" strokeWidth="2.5"/>
+                <path d="M10 16 L14 20 L22 12" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
             </div>
+            <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.4px' }}>
+              Assistenza Tecnica
+            </h1>
+            <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 6 }}>
+              Raccontaci il problema — l&apos;AI ti guida alla soluzione
+            </p>
+          </div>
 
-            <form onSubmit={startChat} className="p-6 space-y-4">
-              <Field label="Il tuo nome *" required
+          {/* Form card */}
+          <form onSubmit={startChat} style={{
+            background: 'var(--surface)',
+            borderRadius: 20,
+            boxShadow: 'var(--shadow-md)',
+            overflow: 'hidden',
+          }}>
+            <div style={{ padding: '24px 24px 0' }}>
+              <FormField
+                label="Il tuo nome"
+                required
                 value={customerInfo.name}
                 onChange={v => setCustomerInfo(p => ({ ...p, name: v }))}
-                placeholder="Es. Marco Rossi" />
-
-              <Field label="Centro estetico"
+                placeholder="Es. Marco Rossi"
+              />
+              <FormField
+                label="Centro estetico"
                 value={customerInfo.centerName}
                 onChange={v => setCustomerInfo(p => ({ ...p, centerName: v }))}
-                placeholder="Es. Centro Bellezza Milano" />
+                placeholder="Es. Centro Bellezza Milano"
+              />
 
-              <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
-                  Modello macchina *
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>
+                  Modello macchina <span style={{ color: 'var(--danger)' }}>*</span>
                 </label>
-                <select
-                  required
-                  value={customerInfo.machineModel}
-                  onChange={e => setCustomerInfo(p => ({ ...p, machineModel: e.target.value }))}
-                  className="w-full px-3 py-2.5 rounded-xl text-sm"
-                  style={{
-                    background: 'var(--surface-2)',
-                    border: '1px solid var(--border)',
-                    color: customerInfo.machineModel ? 'var(--text-primary)' : 'var(--text-secondary)',
-                  }}>
-                  <option value="">Seleziona modello...</option>
-                  {MACHINE_MODELS.map(m => <option key={m} value={m}>{m}</option>)}
-                </select>
+                <div style={{ position: 'relative' }}>
+                  <select
+                    required
+                    value={customerInfo.machineModel}
+                    onChange={e => setCustomerInfo(p => ({ ...p, machineModel: e.target.value }))}
+                    style={{
+                      width: '100%', padding: '11px 36px 11px 14px', borderRadius: 10,
+                      background: 'var(--surface-2)', border: '1.5px solid var(--border)',
+                      color: customerInfo.machineModel ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                      fontSize: 15, cursor: 'pointer',
+                    }}>
+                    <option value="">Seleziona modello...</option>
+                    {MACHINE_MODELS.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                  <svg style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
+                    width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <path d="M3 5L7 9L11 5" stroke="var(--text-tertiary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </div>
               </div>
 
-              <Field label="Numero di serie (opzionale)"
+              <FormField
+                label="Numero di serie (opzionale)"
                 value={customerInfo.machineSerial}
                 onChange={v => setCustomerInfo(p => ({ ...p, machineSerial: v }))}
-                placeholder="Es. ES-2024-0042" />
-
-              <Field label="Email (per aggiornamenti ticket)"
+                placeholder="Es. ES-2024-0042"
+              />
+              <FormField
+                label="Email (per aggiornamenti ticket)"
                 type="email"
                 value={customerInfo.email}
                 onChange={v => setCustomerInfo(p => ({ ...p, email: v }))}
-                placeholder="marco@esempio.it" />
-
-              <Field label="Telefono"
+                placeholder="mario@esempio.it"
+              />
+              <FormField
+                label="Telefono"
                 type="tel"
                 value={customerInfo.phone}
                 onChange={v => setCustomerInfo(p => ({ ...p, phone: v }))}
-                placeholder="+39 333 1234567" />
+                placeholder="+39 333 1234567"
+              />
+            </div>
 
-              <button type="submit"
-                className="w-full py-3 rounded-xl text-sm font-semibold mt-2 transition-all hover:opacity-90"
-                style={{ background: 'var(--accent)', color: 'white' }}>
-                Inizia chat con l&apos;assistente →
+            <div style={{ padding: '8px 24px 24px' }}>
+              <button
+                type="submit"
+                style={{
+                  width: '100%', padding: '14px', borderRadius: 12,
+                  background: 'var(--accent)', color: 'white',
+                  fontSize: 15, fontWeight: 600, border: 'none', cursor: 'pointer',
+                  letterSpacing: '-0.1px',
+                  boxShadow: '0 2px 8px rgba(0,113,227,0.35)',
+                  transition: 'transform 0.1s, box-shadow 0.1s',
+                }}
+                onMouseDown={e => (e.currentTarget.style.transform = 'scale(0.98)')}
+                onMouseUp={e => (e.currentTarget.style.transform = 'scale(1)')}
+              >
+                Inizia la chat con l&apos;assistente →
               </button>
-            </form>
-          </div>
+              <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-tertiary)', marginTop: 12 }}>
+                🔒 I tuoi dati sono protetti e usati solo per l&apos;assistenza
+              </p>
+            </div>
+          </form>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col h-full" style={{ height: 'calc(100vh - 57px)' }}>
-      {/* Messaggi */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+    <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      {/* Ticket bar */}
+      <div style={{
+        padding: '6px 16px', background: 'var(--surface-2)',
+        borderBottom: '1px solid var(--border)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+          {customerInfo.name} · {customerInfo.machineModel}
+        </span>
+        {ticketId && (
+          <span style={{
+            fontSize: 11, fontFamily: 'monospace', fontWeight: 600,
+            color: 'var(--accent)', background: 'var(--accent-light)',
+            padding: '2px 8px', borderRadius: 6,
+          }}>
+            #{ticketId.slice(0, 8).toUpperCase()}
+          </span>
+        )}
+      </div>
+
+      {/* Messages */}
+      <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: 12 }}>
         {messages.map((msg, i) => (
-          <MessageBubble key={i} role={msg.role} content={msg.content} />
+          <Bubble key={i} role={msg.role} content={msg.content} />
         ))}
 
-        {streamingText && (
-          <MessageBubble role="assistant" content={streamingText} streaming />
-        )}
+        {streamingText && <Bubble role="assistant" content={streamingText} streaming />}
 
         {loading && !streamingText && (
-          <div className="flex gap-2 items-center px-4 py-3 rounded-2xl max-w-xs"
-            style={{ background: 'var(--surface-2)' }}>
-            <span className="w-2 h-2 rounded-full animate-bounce" style={{ background: 'var(--accent)', animationDelay: '0ms' }} />
-            <span className="w-2 h-2 rounded-full animate-bounce" style={{ background: 'var(--accent)', animationDelay: '150ms' }} />
-            <span className="w-2 h-2 rounded-full animate-bounce" style={{ background: 'var(--accent)', animationDelay: '300ms' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Avatar />
+            <div style={{
+              display: 'flex', gap: 5, alignItems: 'center',
+              padding: '12px 16px', borderRadius: 18, borderBottomLeftRadius: 4,
+              background: 'var(--surface)', boxShadow: 'var(--shadow-sm)',
+            }}>
+              {[0, 150, 300].map(delay => (
+                <span key={delay} style={{
+                  width: 7, height: 7, borderRadius: '50%',
+                  background: 'var(--text-tertiary)',
+                  display: 'inline-block',
+                  animation: 'bounce 1.2s infinite',
+                  animationDelay: `${delay}ms`,
+                }} />
+              ))}
+            </div>
           </div>
         )}
 
-        {escalated && (
-          <EscalationCard ticketId={ticketId} />
-        )}
+        {escalated && <EscalationCard ticketId={ticketId} />}
 
         <div ref={bottomRef} />
       </div>
 
       {/* Input */}
       {!escalated && (
-        <div className="flex-shrink-0 px-4 py-3 border-t" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-          <div className="flex gap-2">
-            <input
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(input) } }}
-              placeholder="Descrivi il problema..."
-              disabled={loading}
-              className="flex-1 px-4 py-2.5 rounded-xl text-sm"
-              style={{
-                background: 'var(--surface-2)',
-                border: '1px solid var(--border)',
-                color: 'var(--text-primary)',
-              }}
-            />
-            <button
-              onClick={() => sendMessage(input)}
-              disabled={loading || !input.trim()}
-              className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-all"
-              style={{
-                background: input.trim() && !loading ? 'var(--accent)' : 'var(--surface-3)',
-                color: 'white',
-              }}>
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M2 8L14 2L10 8L14 14L2 8Z"/>
-              </svg>
-            </button>
-          </div>
-          <p className="text-xs mt-1.5 text-center" style={{ color: 'var(--text-secondary)' }}>
-            Ticket #{ticketId?.slice(0, 8).toUpperCase() ?? '—'}
-          </p>
+        <div style={{
+          flexShrink: 0,
+          padding: '10px 12px',
+          paddingBottom: 'calc(10px + env(safe-area-inset-bottom, 0px))',
+          background: 'rgba(255,255,255,0.9)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          borderTop: '1px solid var(--border)',
+          display: 'flex', alignItems: 'flex-end', gap: 8,
+        }}>
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={e => {
+              setInput(e.target.value)
+              e.target.style.height = 'auto'
+              e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px'
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(input) }
+            }}
+            placeholder="Descrivi il problema..."
+            disabled={loading}
+            rows={1}
+            style={{
+              flex: 1, padding: '10px 14px', borderRadius: 22,
+              background: 'var(--surface-2)', border: '1.5px solid var(--border)',
+              color: 'var(--text-primary)', fontSize: 15, lineHeight: '1.4',
+              resize: 'none', overflow: 'hidden', minHeight: 42, maxHeight: 120,
+              transition: 'border-color 0.15s',
+            }}
+            onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
+            onBlur={e => (e.target.style.borderColor = 'var(--border)')}
+          />
+          <button
+            onClick={() => sendMessage(input)}
+            disabled={loading || !input.trim()}
+            style={{
+              width: 42, height: 42, borderRadius: '50%', border: 'none',
+              background: input.trim() && !loading ? 'var(--accent)' : 'var(--surface-3)',
+              color: 'white', cursor: input.trim() && !loading ? 'pointer' : 'default',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0, transition: 'background 0.2s, transform 0.1s',
+              boxShadow: input.trim() && !loading ? '0 2px 6px rgba(0,113,227,0.4)' : 'none',
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M2.5 1.5L14.5 8L2.5 14.5V9.5L10.5 8L2.5 6.5V1.5Z"/>
+            </svg>
+          </button>
         </div>
       )}
+
+      <style>{`
+        @keyframes bounce {
+          0%, 60%, 100% { transform: translateY(0); }
+          30% { transform: translateY(-5px); }
+        }
+        @keyframes blink {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0; }
+        }
+      `}</style>
     </div>
   )
 }
 
-function Field({ label, value, onChange, placeholder, type = 'text', required = false }: {
-  label: string; value: string; onChange: (v: string) => void
-  placeholder?: string; type?: string; required?: boolean
-}) {
+function Avatar() {
   return (
-    <div>
-      <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>{label}</label>
-      <input
-        type={type}
-        required={required}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full px-3 py-2.5 rounded-xl text-sm"
-        style={{
-          background: 'var(--surface-2)',
-          border: '1px solid var(--border)',
-          color: 'var(--text-primary)',
-        }}
-      />
+    <div style={{
+      width: 30, height: 30, borderRadius: 10,
+      background: 'linear-gradient(135deg, #0071e3 0%, #00a2ff 100%)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2,
+    }}>
+      <svg width="13" height="13" viewBox="0 0 32 32" fill="none">
+        <circle cx="16" cy="16" r="10" stroke="white" strokeWidth="2.5"/>
+        <path d="M10 16 L14 20 L22 12" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
     </div>
   )
 }
 
-function MessageBubble({ role, content, streaming }: { role: string; content: string; streaming?: boolean }) {
+function Bubble({ role, content, streaming }: { role: string; content: string; streaming?: boolean }) {
   const isUser = role === 'user'
 
-  const formatted = content
+  const html = content
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/\n/g, '<br/>')
+    + (streaming ? '<span style="display:inline-block;width:2px;height:14px;background:currentColor;margin-left:2px;vertical-align:text-bottom;animation:blink 1s infinite"></span>' : '')
+
+  if (isUser) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <div
+          style={{
+            maxWidth: '80%', padding: '10px 14px',
+            borderRadius: 18, borderBottomRightRadius: 4,
+            background: 'var(--accent)', color: 'white',
+            fontSize: 15, lineHeight: 1.5,
+          }}
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      </div>
+    )
+  }
 
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-      {!isUser && (
-        <div className="w-7 h-7 rounded-lg flex items-center justify-center mr-2 mt-0.5 flex-shrink-0"
-          style={{ background: 'var(--accent)' }}>
-          <svg width="12" height="12" viewBox="0 0 32 32" fill="none">
-            <circle cx="16" cy="16" r="10" stroke="white" strokeWidth="2.5"/>
-            <path d="M10 16 L14 20 L22 12" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </div>
-      )}
+    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+      <Avatar />
       <div
-        className="max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed"
         style={{
-          background: isUser ? 'var(--accent)' : 'var(--surface-2)',
-          color: isUser ? 'white' : 'var(--text-primary)',
-          borderBottomRightRadius: isUser ? '4px' : '16px',
-          borderBottomLeftRadius: isUser ? '16px' : '4px',
+          maxWidth: '80%', padding: '10px 14px',
+          borderRadius: 18, borderBottomLeftRadius: 4,
+          background: 'var(--surface)', color: 'var(--text-primary)',
+          fontSize: 15, lineHeight: 1.5,
+          boxShadow: 'var(--shadow-sm)',
         }}
-        dangerouslySetInnerHTML={{ __html: formatted + (streaming ? '<span class="animate-pulse">▋</span>' : '') }}
+        dangerouslySetInnerHTML={{ __html: html }}
       />
     </div>
   )
@@ -344,24 +441,66 @@ function MessageBubble({ role, content, streaming }: { role: string; content: st
 
 function EscalationCard({ ticketId }: { ticketId: string | null }) {
   return (
-    <div className="rounded-2xl p-4 mx-auto max-w-sm text-center"
-      style={{ background: 'rgba(108,99,255,0.1)', border: '1px solid rgba(108,99,255,0.3)' }}>
-      <div className="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-3"
-        style={{ background: 'rgba(108,99,255,0.2)' }}>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6c63ff" strokeWidth="2">
+    <div style={{
+      background: 'var(--surface)', borderRadius: 16,
+      padding: 20, textAlign: 'center',
+      boxShadow: 'var(--shadow-md)',
+      border: '1px solid var(--border)',
+      margin: '8px 0',
+    }}>
+      <div style={{
+        width: 48, height: 48, borderRadius: '50%',
+        background: 'rgba(0,113,227,0.1)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        margin: '0 auto 12px',
+      }}>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2">
           <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.68A2 2 0 012 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/>
         </svg>
       </div>
-      <h3 className="font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Tecnico notificato</h3>
-      <p className="text-sm mb-2" style={{ color: 'var(--text-secondary)' }}>
-        Il tecnico di turno è stato avvisato via WhatsApp ed email e ti ricontatterà al più presto.
+      <h3 style={{ fontWeight: 600, fontSize: 16, color: 'var(--text-primary)', marginBottom: 6 }}>
+        Tecnico notificato
+      </h3>
+      <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 12 }}>
+        Il tecnico di turno è stato avvisato e ti ricontatterà al più presto.
       </p>
       {ticketId && (
-        <p className="text-xs font-mono px-3 py-1 rounded-lg inline-block"
-          style={{ background: 'var(--surface-3)', color: 'var(--text-secondary)' }}>
+        <span style={{
+          fontSize: 12, fontFamily: 'monospace', fontWeight: 600,
+          color: 'var(--accent)', background: 'var(--accent-light)',
+          padding: '4px 10px', borderRadius: 8,
+        }}>
           Ticket #{ticketId.slice(0, 8).toUpperCase()}
-        </p>
+        </span>
       )}
+    </div>
+  )
+}
+
+function FormField({ label, value, onChange, placeholder, type = 'text', required = false }: {
+  label: string; value: string; onChange: (v: string) => void
+  placeholder?: string; type?: string; required?: boolean
+}) {
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>
+        {label}{required && <span style={{ color: 'var(--danger)', marginLeft: 2 }}>*</span>}
+      </label>
+      <input
+        type={type}
+        required={required}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={{
+          width: '100%', padding: '11px 14px', borderRadius: 10,
+          background: 'var(--surface-2)', border: '1.5px solid var(--border)',
+          color: 'var(--text-primary)', fontSize: 15,
+          transition: 'border-color 0.15s',
+        }}
+        onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
+        onBlur={e => (e.target.style.borderColor = 'var(--border)')}
+      />
     </div>
   )
 }
