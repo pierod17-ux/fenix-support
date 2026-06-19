@@ -13,9 +13,10 @@ export async function POST(req: NextRequest) {
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { limit } = await req.json()
-  await supabase.from('ai_config').upsert(
+  const { error } = await supabase.from('ai_config').upsert(
     { key: 'cost_limit_usd', value: String(limit), updated_by: user.id, updated_at: new Date().toISOString() },
     { onConflict: 'key' }
   )
+  if (error) return Response.json({ error: error.message }, { status: 500 })
   return Response.json({ ok: true })
 }

@@ -18,20 +18,31 @@ export default function SystemContextsEditor({ initialContexts }: { initialConte
   )
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(
     initialContexts.length === 1 ? initialContexts[0].id : null
   )
 
   const save = useCallback(async (ctxs: SystemContext[]) => {
     setSaving(true)
-    await fetch('/api/config/contexts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(ctxs),
-    })
-    setSaved(true)
-    setSaving(false)
-    setTimeout(() => setSaved(false), 2000)
+    setError(null)
+    try {
+      const res = await fetch('/api/config/contexts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(ctxs),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error || `Errore ${res.status}`)
+      }
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Salvataggio non riuscito')
+    } finally {
+      setSaving(false)
+    }
   }, [])
 
   function addContext() {
@@ -110,6 +121,16 @@ export default function SystemContextsEditor({ initialContexts }: { initialConte
           </button>
         </div>
       </div>
+
+      {error && (
+        <div style={{
+          padding: '10px 20px', fontSize: 13, fontWeight: 500,
+          color: '#ff3b30', background: 'rgba(255,59,48,0.08)',
+          borderBottom: '1px solid var(--border)',
+        }}>
+          Salvataggio non riuscito: {error}
+        </div>
+      )}
 
       {/* Context list */}
       <div style={{ padding: contexts.length > 0 ? '12px 16px' : 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
