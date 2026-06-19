@@ -1,4 +1,4 @@
-import { createServiceClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { NextRequest } from 'next/server'
 
 const CHUNK_SIZE = 800
@@ -30,9 +30,11 @@ async function embedTexts(texts: string[]): Promise<number[][]> {
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = await createServiceClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const auth = await createClient()           // SSR — legge la sessione admin
+  const { data: { user } } = await auth.auth.getUser()
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const supabase = await createServiceClient() // service role — DB + embeddings
 
   const { ticketIds } = await req.json()
   if (!Array.isArray(ticketIds) || !ticketIds.length) {
