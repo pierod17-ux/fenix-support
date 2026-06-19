@@ -21,13 +21,11 @@ export default function ChatPage() {
         <div style={{
           width: 38, height: 38, borderRadius: 10,
           background: 'linear-gradient(135deg, #0071e3 0%, #00a2ff 100%)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
           flexShrink: 0, boxShadow: '0 2px 8px rgba(0,113,227,0.35)',
+          overflow: 'hidden',
         }}>
-          <svg width="18" height="18" viewBox="0 0 32 32" fill="none">
-            <circle cx="16" cy="16" r="10" stroke="white" strokeWidth="2.5"/>
-            <path d="M10 16 L14 20 L22 12" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/avatar.png" alt="Giulia" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-primary)', letterSpacing: '-0.2px' }}>
@@ -35,7 +33,7 @@ export default function ChatPage() {
           </p>
           <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 2 }}>
             <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success)', flexShrink: 0 }}/>
-            <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Assistente AI attivo</p>
+            <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Giulia · Assistente AI attivo</p>
           </div>
         </div>
         <a href="/login" style={{
