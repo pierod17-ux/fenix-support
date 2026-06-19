@@ -1,4 +1,4 @@
-import { createServiceClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { format } from 'date-fns'
 import { it } from 'date-fns/locale'
@@ -21,7 +21,10 @@ const priorityLabel: Record<string, string> = {
 }
 
 export default async function AdminTickets() {
-  const supabase = await createServiceClient()
+  // Sessione autenticata (l'admin è già loggato via layout): la RLS di
+  // support_tickets richiede auth.uid() valorizzato. NON usare createServiceClient
+  // qui: se manca SUPABASE_SERVICE_ROLE_KEY ripiega su anon e la lista risulta vuota.
+  const supabase = await createClient()
 
   const { data: tickets } = await supabase
     .from('support_tickets')

@@ -1,4 +1,4 @@
-import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import AdminSidebar from '@/components/admin/AdminSidebar'
 
@@ -7,8 +7,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const serviceClient = await createServiceClient()
-  const { data: profile } = await serviceClient
+  // Usa la sessione autenticata: la RLS di technician_profiles consente
+  // a ciascun utente di leggere il proprio profilo (auth.uid() = id).
+  const { data: profile } = await supabase
     .from('technician_profiles')
     .select('display_name, role')
     .eq('id', user.id)
