@@ -24,6 +24,9 @@ const MACHINE_MODELS = [
   'Altro',
 ]
 
+// Salva la sessione di chat nel browser così un reload non la perde.
+const STORAGE_KEY = 'fenix-chat-session-v1'
+
 export default function ChatInterface() {
   const [phase, setPhase] = useState<'form' | 'chat'>('form')
   const [customerInfo, setCustomerInfo] = useState<CustomerInfo>({
@@ -41,6 +44,50 @@ export default function ChatInterface() {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const supabase = createClient()
+
+  // Ripristina la conversazione salvata al caricamento della pagina (post-reload)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      if (!raw) return
+      const s = JSON.parse(raw)
+      if (s && s.phase === 'chat' && Array.isArray(s.messages) && s.messages.length > 0) {
+        if (s.customerInfo) setCustomerInfo(s.customerInfo)
+        setMessages(s.messages)
+        setTicketId(s.ticketId ?? null)
+        setEscalated(!!s.escalated)
+        setDirectChatActive(!!s.directChatActive)
+        setDirectChatToken(s.directChatToken ?? null)
+        setPhase('chat')
+      }
+    } catch { /* ignore */ }
+  }, [])
+
+  // Salva la sessione ad ogni cambiamento mentre la chat è attiva
+  useEffect(() => {
+    if (typeof window === 'undefined' || phase !== 'chat') return
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        phase, customerInfo, messages, ticketId, escalated, directChatActive, directChatToken,
+      }))
+    } catch { /* ignore */ }
+  }, [phase, customerInfo, messages, ticketId, escalated, directChatActive, directChatToken])
+
+  function resetChat() {
+    if (pollRef.current) clearInterval(pollRef.current)
+    if (typeof window !== 'undefined') {
+      try { localStorage.removeItem(STORAGE_KEY) } catch { /* ignore */ }
+    }
+    setMessages([])
+    setTicketId(null)
+    setEscalated(false)
+    setDirectChatActive(false)
+    setDirectChatToken(null)
+    setStreamingText('')
+    setInput('')
+    setPhase('form')
+  }
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -318,15 +365,30 @@ export default function ChatInterface() {
         <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
           {customerInfo.name} · {customerInfo.machineModel}
         </span>
-        {ticketId && (
-          <span style={{
-            fontSize: 11, fontFamily: 'monospace', fontWeight: 600,
-            color: 'var(--accent)', background: 'var(--accent-light)',
-            padding: '2px 8px', borderRadius: 6,
-          }}>
-            #{ticketId.slice(0, 8).toUpperCase()}
-          </span>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          {ticketId && (
+            <span style={{
+              fontSize: 11, fontFamily: 'monospace', fontWeight: 600,
+              color: 'var(--accent)', background: 'var(--accent-light)',
+              padding: '2px 8px', borderRadius: 6,
+            }}>
+              #{ticketId.slice(0, 8).toUpperCase()}
+            </span>
+          )}
+          <button
+            onClick={() => {
+              if (confirm('Vuoi iniziare una nuova richiesta? La conversazione attuale verrà chiusa.')) resetChat()
+            }}
+            title="Nuova richiesta"
+            style={{
+              fontSize: 11, fontWeight: 600, color: 'var(--text-tertiary)',
+              background: 'transparent', border: '1px solid var(--border)',
+              padding: '3px 9px', borderRadius: 6, cursor: 'pointer',
+            }}
+          >
+            Nuova
+          </button>
+        </div>
       </div>
 
       {/* Messages */}
