@@ -8,12 +8,13 @@ export async function POST(req: NextRequest) {
 
   const { value } = await req.json()
 
-  await supabase.from('ai_config').upsert({
+  const { error } = await supabase.from('ai_config').upsert({
     key: 'system_context',
     value,
     updated_by: user.id,
     updated_at: new Date().toISOString(),
   }, { onConflict: 'key' })
 
+  if (error) return Response.json({ error: error.message }, { status: 500 })
   return Response.json({ ok: true })
 }
