@@ -198,21 +198,17 @@ export default function ChatInterface() {
           {/* Hero */}
           <div style={{ textAlign: 'center', marginBottom: 28 }}>
             <div style={{
-              width: 64, height: 64, borderRadius: 18,
-              background: 'linear-gradient(135deg, #0071e3 0%, #00a2ff 100%)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              margin: '0 auto 16px', boxShadow: '0 4px 16px rgba(0,113,227,0.3)',
+              display: 'flex', justifyContent: 'center',
+              margin: '0 auto 16px',
+              filter: 'drop-shadow(0 4px 16px rgba(0,113,227,0.3))',
             }}>
-              <svg width="28" height="28" viewBox="0 0 32 32" fill="none">
-                <circle cx="16" cy="16" r="10" stroke="white" strokeWidth="2.5"/>
-                <path d="M10 16 L14 20 L22 12" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
+              <Avatar size={64} radius={18} />
             </div>
             <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.4px' }}>
               Assistenza Tecnica
             </h1>
             <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 6 }}>
-              Raccontaci il problema — l&apos;AI ti guida alla soluzione
+              Ciao, sono {ASSISTANT_NAME} — raccontami il problema e ti guido alla soluzione
             </p>
           </div>
 
@@ -442,18 +438,33 @@ export default function ChatInterface() {
   )
 }
 
-function Avatar() {
+// Nome e volto dell'assistente virtuale mostrati in chat.
+// Per cambiare il volto: sostituisci public/operatrice.jpg
+// Per cambiare il nome: modifica ASSISTANT_NAME qui sotto.
+const ASSISTANT_NAME = 'Giulia'
+const ASSISTANT_AVATAR = '/operatrice.png'
+
+function Avatar({ size = 30, radius = 10 }: { size?: number; radius?: number }) {
+  const [failed, setFailed] = useState(false)
   return (
     <div style={{
-      width: 30, height: 30, borderRadius: 10,
+      width: size, height: size, borderRadius: radius,
       background: 'linear-gradient(135deg, #0071e3 0%, #00a2ff 100%)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2,
+      flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2, overflow: 'hidden',
+      fontSize: Math.round(size * 0.42), fontWeight: 700, color: 'white',
     }}>
-      <svg width="13" height="13" viewBox="0 0 32 32" fill="none">
-        <circle cx="16" cy="16" r="10" stroke="white" strokeWidth="2.5"/>
-        <path d="M10 16 L14 20 L22 12" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-      </svg>
+      {failed ? (
+        ASSISTANT_NAME.charAt(0)
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={ASSISTANT_AVATAR}
+          alt={ASSISTANT_NAME}
+          onError={() => setFailed(true)}
+          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+        />
+      )}
     </div>
   )
 }
@@ -515,16 +526,21 @@ function Bubble({ role, content, streaming }: { role: string; content: string; s
   return (
     <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
       <Avatar />
-      <div
-        style={{
-          maxWidth: '80%', padding: '10px 14px',
-          borderRadius: 18, borderBottomLeftRadius: 4,
-          background: 'var(--surface)', color: 'var(--text-primary)',
-          fontSize: 15, lineHeight: 1.5,
-          boxShadow: 'var(--shadow-sm)',
-        }}
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
+      <div>
+        <p style={{ fontSize: 10, color: 'var(--text-tertiary)', marginBottom: 3, paddingLeft: 2 }}>
+          {ASSISTANT_NAME} · Assistenza
+        </p>
+        <div
+          style={{
+            maxWidth: '80%', padding: '10px 14px',
+            borderRadius: 18, borderBottomLeftRadius: 4,
+            background: 'var(--surface)', color: 'var(--text-primary)',
+            fontSize: 15, lineHeight: 1.5,
+            boxShadow: 'var(--shadow-sm)',
+          }}
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      </div>
     </div>
   )
 }
