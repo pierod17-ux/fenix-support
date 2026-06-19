@@ -442,7 +442,7 @@ export default function ChatInterface() {
 // Per cambiare il volto: sostituisci public/operatrice.jpg
 // Per cambiare il nome: modifica ASSISTANT_NAME qui sotto.
 const ASSISTANT_NAME = 'Giulia'
-const ASSISTANT_AVATAR = '/operatrice.png'
+const ASSISTANT_AVATAR = '/avatar.png'
 
 function Avatar({ size = 30, radius = 10 }: { size?: number; radius?: number }) {
   const [failed, setFailed] = useState(false)
