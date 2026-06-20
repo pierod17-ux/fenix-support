@@ -8,3 +8,5 @@
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+# redeploy: attiva SUPABASE_SERVICE_ROLE_KEY (2026-06-19)
