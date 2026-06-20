@@ -52,7 +52,7 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
           </div>
           <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{ticket.subject}</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-            Aperto il {format(new Date(ticket.created_at), 'dd MMMM yyyy alle HH:mm', { locale: it })}
+            Aperto il {format(new Date(ticket.created_at), "dd MMMM yyyy 'alle' HH:mm", { locale: it })}
           </p>
         </div>
         <TicketActions ticketId={id} currentStatus={ticket.status} />
