@@ -129,16 +129,13 @@ export default async function AdminTickets() {
               {tickets.map((ticket, i) => {
                 const sc = statusColor[ticket.status] ?? { bg: 'var(--surface-2)', text: 'var(--text-secondary)' }
                 return (
-                  <Link key={ticket.id} href={`/admin/tickets/${ticket.id}`} style={{
+                  <Link key={ticket.id} href={`/admin/tickets/${ticket.id}`} className="admin-ticket-row" style={{
                     display: 'flex', alignItems: 'center', gap: 14,
                     padding: '14px 20px',
                     borderTop: i > 0 ? '1px solid var(--border)' : 'none',
                     textDecoration: 'none',
                     transition: 'background 0.12s',
-                  }}
-                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                  >
+                  }}>
                     {/* Priority dot */}
                     <div style={{
                       width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
@@ -175,6 +172,10 @@ export default async function AdminTickets() {
           )}
         </div>
       </div>
+
+      <style>{`
+        .admin-ticket-row:hover { background: var(--surface-2); }
+      `}</style>
     </div>
   )
 }
