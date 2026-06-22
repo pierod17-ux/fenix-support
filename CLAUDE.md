@@ -7,7 +7,7 @@ Cliente: Fenix / Damtec. Admin: Piero D'Amico (pierod17@gmail.com).
 - Next.js 15 App Router · TypeScript strict · Tailwind v4
 - Supabase PostgreSQL + RLS (project: `hvrjnuszitrybesklnyt`)
 - Anthropic Claude `claude-sonnet-4-6` streaming SSE
-- OpenAI embeddings (RAG, pgvector 1536-dim)
+- PostgreSQL full-text search (RAG, tsvector italian)
 - Resend email (from: info@damtec.it)
 - Netlify deploy → https://fenix-support.netlify.app (site ID: `ee5d6db8-3615-4f87-96ae-07432c0b5a47`)
 - Repo: GitHub `pierod17-ux/fenix-support`, branch `master`

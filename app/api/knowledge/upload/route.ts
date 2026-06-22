@@ -1,7 +1,7 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { NextRequest } from 'next/server'
 
-// Timeout per-route: PDF parsing + embedding OpenAI possono richiedere >10s
+// Timeout per-route: PDF parsing può richiedere >10s su file grandi
 export const maxDuration = 60
 
 const CHUNK_SIZE = 800
@@ -18,20 +18,6 @@ function chunkText(text: string): string[] {
   return chunks.filter(c => c.length > 50)
 }
 
-async function embedTexts(texts: string[]): Promise<number[][]> {
-  const res = await fetch('https://api.openai.com/v1/embeddings', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ input: texts, model: 'text-embedding-3-small' }),
-  })
-  if (!res.ok) throw new Error(`Embedding API error: ${res.status}`)
-  const data = await res.json()
-  return data.data.map((d: { embedding: number[] }) => d.embedding)
-}
-
 async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
   const pdfParse = (await import('pdf-parse/lib/pdf-parse.js')).default
   const data = await pdfParse(Buffer.from(buffer))
@@ -39,14 +25,11 @@ async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
 }
 
 async function processDocument(docId: string, fileBuffer: ArrayBuffer, fileType: string, title: string) {
-  // Usa service client: fuori dal contesto request, la sessione SSR non è disponibile
   const supabase = await createServiceClient()
 
   let text = ''
   try {
-    if (fileType === 'txt') {
-      text = new TextDecoder().decode(fileBuffer)
-    } else if (fileType === 'pdf') {
+    if (fileType === 'pdf') {
       text = await extractPdfText(fileBuffer)
     } else {
       text = new TextDecoder().decode(fileBuffer)
@@ -65,30 +48,26 @@ async function processDocument(docId: string, fileBuffer: ArrayBuffer, fileType:
 
   try {
     const chunks = chunkText(text)
-    const batchSize = 20
-    let totalChunks = 0
+    const rows = chunks.map((content, i) => ({
+      document_id: docId,
+      title: `${title} (parte ${i + 1})`,
+      content,
+      // embedding NULL: usiamo ricerca full-text (tsvector), non vettori OpenAI
+    }))
 
-    for (let i = 0; i < chunks.length; i += batchSize) {
-      const batch = chunks.slice(i, i + batchSize)
-      const embeddings = await embedTexts(batch)
-      const rows = batch.map((content, j) => ({
-        document_id: docId,
-        title: `${title} (parte ${i + j + 1})`,
-        content,
-        embedding: embeddings[j],
-      }))
-      await supabase.from('knowledge_chunks').insert(rows)
-      totalChunks += batch.length
+    const batchSize = 50
+    for (let i = 0; i < rows.length; i += batchSize) {
+      await supabase.from('knowledge_chunks').insert(rows.slice(i, i + batchSize))
     }
 
     await supabase
       .from('knowledge_documents')
-      .update({ status: 'ready', chunk_count: totalChunks })
+      .update({ status: 'ready', chunk_count: rows.length })
       .eq('id', docId)
 
-    console.log(`[KB] Document ${docId} ready: ${totalChunks} chunks`)
+    console.log(`[KB] Document ${docId} ready: ${rows.length} chunks`)
   } catch (err) {
-    console.error('[KB] Embedding failed:', err)
+    console.error('[KB] Chunking/insert failed:', err)
     await supabase.from('knowledge_documents').update({ status: 'error' }).eq('id', docId)
   }
 }
@@ -114,7 +93,6 @@ export async function POST(req: NextRequest) {
 
   const fileBuffer = await file.arrayBuffer()
 
-  // Upload storage
   const fileName = `${Date.now()}_${file.name}`
   const { error: uploadErr } = await supabase.storage
     .from('knowledge-documents')
@@ -129,7 +107,6 @@ export async function POST(req: NextRequest) {
     .from('knowledge-documents')
     .getPublicUrl(fileName)
 
-  // Crea record con status processing
   const { data: doc, error: docErr } = await supabase
     .from('knowledge_documents')
     .insert({
@@ -149,10 +126,8 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: `Errore DB: ${docErr?.message}` }, { status: 500 })
   }
 
-  // Elabora sincronamente — maxDuration=60 evita timeout
   await processDocument(doc.id, fileBuffer, fileType, title)
 
-  // Rileggi lo stato finale
   const { data: updated } = await (await createServiceClient())
     .from('knowledge_documents').select('status, chunk_count').eq('id', doc.id).single()
 

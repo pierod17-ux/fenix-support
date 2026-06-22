@@ -92,16 +92,9 @@ async function buildSystemPrompt(): Promise<string> {
 async function retrieveContext(query: string): Promise<string> {
   try {
     const supabase = await createServiceClient()
-    const embRes = await fetch('https://api.openai.com/v1/embeddings', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input: query, model: 'text-embedding-3-small' }),
-    })
-    if (!embRes.ok) return ''
-    const embData = await embRes.json()
-    const embedding = embData.data[0].embedding
-    const { data: chunks } = await supabase.rpc('match_knowledge_chunks', {
-      query_embedding: embedding, match_threshold: 0.7, match_count: 5,
+    const { data: chunks } = await supabase.rpc('match_knowledge_chunks_fts', {
+      query_text: query,
+      match_count: 5,
     })
     if (!chunks?.length) return ''
     return '\n\n## Documentazione tecnica rilevante\n' +
