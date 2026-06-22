@@ -1,4 +1,4 @@
-import { createServiceClient } from '@/lib/supabase/server'
+import { createClient } from "@/lib/supabase/server"
 import { format } from 'date-fns'
 import { it } from 'date-fns/locale'
 
@@ -13,7 +13,7 @@ const statusLabel: Record<string, string> = {
 }
 
 export default async function AnalyticsPage() {
-  const supabase = await createServiceClient()
+  const supabase = await createClient()
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
 

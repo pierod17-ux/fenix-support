@@ -1,4 +1,4 @@
-import { createServiceClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
 import SystemContextsEditor from '@/components/admin/SystemContextsEditor'
 import TicketToKnowledge from '@/components/admin/TicketToKnowledge'
 import AIRulesEditor from '@/components/admin/AIRulesEditor'
@@ -6,7 +6,7 @@ import AICostTracker from '@/components/admin/AICostTracker'
 import DocumentUpload from '@/components/admin/DocumentUpload'
 
 export default async function TrainingPage() {
-  const supabase = await createServiceClient()
+  const supabase = await createClient()
 
   const [
     { data: contextsConfig },
