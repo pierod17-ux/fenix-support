@@ -163,58 +163,98 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
           border: '1px solid var(--border)', overflow: 'hidden',
         }}>
           <div style={{
-            padding: '18px 24px', borderBottom: '1px solid var(--border)',
+            padding: '14px 20px', borderBottom: '1px solid var(--border)',
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           }}>
-            <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>
-              Conversazione
-            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
+                Conversazione
+              </h3>
+              <div style={{ display: 'flex', gap: 10 }}>
+                {[
+                  { color: 'var(--accent)', label: 'Cliente' },
+                  { color: '#7c3aed', label: 'AI' },
+                  { color: '#16a34a', label: 'Tecnico' },
+                ].map(({ color, label }) => (
+                  <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--text-tertiary)' }}>
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, display: 'inline-block', flexShrink: 0 }} />
+                    {label}
+                  </span>
+                ))}
+              </div>
+            </div>
             <span style={{
-              fontSize: 12, fontWeight: 500, padding: '3px 10px', borderRadius: 20,
-              background: 'var(--surface-3)', color: 'var(--text-secondary)',
+              fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 20,
+              background: 'var(--surface-3)', color: 'var(--text-tertiary)',
             }}>
-              {messages?.length ?? 0} messaggi
+              {messages?.length ?? 0}
             </span>
           </div>
 
-          <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16, maxHeight: 520, overflowY: 'auto' }}>
+          <div style={{ padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 560, overflowY: 'auto' }}>
             {!messages?.length && (
-              <p style={{ fontSize: 14, textAlign: 'center', color: 'var(--text-tertiary)', padding: '20px 0' }}>
+              <p style={{ fontSize: 13, textAlign: 'center', color: 'var(--text-tertiary)', padding: '16px 0' }}>
                 Nessun messaggio
               </p>
             )}
-            {messages?.map(msg => (
-              <div key={msg.id} style={{
-                display: 'flex', gap: 10,
-                justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
-              }}>
-                {msg.role !== 'user' && (
-                  <div style={{
-                    width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 11, fontWeight: 700, marginTop: 2,
-                    background: msg.role === 'assistant' ? 'var(--accent)' : 'var(--success)',
-                    color: 'white',
-                  }}>
-                    {msg.role === 'assistant' ? 'AI' : 'T'}
-                  </div>
-                )}
-                <div style={{
-                  maxWidth: '72%', padding: '10px 14px', borderRadius: 14,
-                  background: msg.role === 'user' ? 'var(--accent)' : 'var(--surface-2)',
-                  color: msg.role === 'user' ? 'white' : 'var(--text-primary)',
-                  borderBottomRightRadius: msg.role === 'user' ? 4 : 14,
-                  borderBottomLeftRadius: msg.role !== 'user' ? 4 : 14,
+            {messages?.map(msg => {
+              const isUser = msg.role === 'user'
+              const isAI = msg.role === 'assistant'
+              const avatarColor = isAI ? '#7c3aed' : '#16a34a'
+              const senderLabel = isAI ? 'AI FENIX' : 'TECNICO'
+              return (
+                <div key={msg.id} style={{
+                  display: 'flex', gap: 6, alignItems: 'flex-end',
+                  justifyContent: isUser ? 'flex-end' : 'flex-start',
                 }}>
-                  <p style={{ fontSize: 14, lineHeight: '1.55', whiteSpace: 'pre-wrap', margin: 0 }}>
-                    {msg.content}
-                  </p>
-                  <p style={{ fontSize: 11, marginTop: 5, opacity: 0.6, textAlign: msg.role === 'user' ? 'right' : 'left' }}>
-                    {format(new Date(msg.created_at), 'HH:mm')}
-                  </p>
+                  {!isUser && (
+                    <div style={{
+                      width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 8, fontWeight: 800, letterSpacing: '-0.2px',
+                      background: avatarColor, color: 'white',
+                    }}>
+                      {isAI ? 'AI' : 'T'}
+                    </div>
+                  )}
+                  <div style={{
+                    maxWidth: '74%', padding: '6px 10px', borderRadius: 11,
+                    ...(isUser ? {
+                      background: 'var(--accent)', color: 'white',
+                      borderBottomRightRadius: 3,
+                    } : isAI ? {
+                      background: 'rgba(124,58,237,0.08)',
+                      border: '1px solid rgba(124,58,237,0.16)',
+                      color: 'var(--text-primary)',
+                      borderBottomLeftRadius: 3,
+                    } : {
+                      background: 'rgba(22,163,74,0.08)',
+                      border: '1px solid rgba(22,163,74,0.18)',
+                      color: 'var(--text-primary)',
+                      borderBottomLeftRadius: 3,
+                    }),
+                  }}>
+                    {!isUser && (
+                      <p style={{
+                        fontSize: 9, fontWeight: 700, letterSpacing: '0.06em',
+                        color: avatarColor, marginBottom: 2, opacity: 0.8,
+                      }}>
+                        {senderLabel}
+                      </p>
+                    )}
+                    <p style={{ fontSize: 13, lineHeight: '1.5', whiteSpace: 'pre-wrap', margin: 0 }}>
+                      {msg.content}
+                    </p>
+                    <p style={{
+                      fontSize: 10, marginTop: 2, opacity: 0.5, margin: '2px 0 0',
+                      textAlign: isUser ? 'right' : 'left',
+                    }}>
+                      {format(new Date(msg.created_at), 'HH:mm')}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
 
