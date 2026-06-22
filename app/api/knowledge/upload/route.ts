@@ -1,4 +1,4 @@
-import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
 import { NextRequest } from 'next/server'
 
 const CHUNK_SIZE = 800
@@ -37,13 +37,10 @@ async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
 }
 
 export async function POST(req: NextRequest) {
-  // SSR client per leggere la sessione admin
-  const authClient = await createClient()
-  const { data: { user } } = await authClient.auth.getUser()
+  // SSR client con sessione admin — soddisfa le policy storage (auth.uid())
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
-
-  // Service client per storage e DB (bypassa RLS)
-  const supabase = await createServiceClient()
 
   const formData = await req.formData()
   const title = formData.get('title') as string
