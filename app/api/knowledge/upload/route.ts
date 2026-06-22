@@ -1,3 +1,4 @@
+import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { NextRequest } from 'next/server'
@@ -19,42 +20,31 @@ function chunkText(text: string): string[] {
 }
 
 async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   const base64 = Buffer.from(buffer).toString('base64')
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': process.env.ANTHROPIC_API_KEY!,
-      'anthropic-version': '2023-06-01',
-      'anthropic-beta': 'pdfs-2024-09-25',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 8192,
-      messages: [{
-        role: 'user',
-        content: [
-          {
-            type: 'document',
-            source: { type: 'base64', media_type: 'application/pdf', data: base64 },
-          },
-          {
-            type: 'text',
-            text: 'Estrai tutto il testo di questo documento tecnico. Restituisci SOLO il testo grezzo, senza commenti né formattazione aggiuntiva.',
-          },
-        ],
-      }],
-    }),
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const response = await (client.messages.create as unknown as (p: Record<string, unknown>) => Promise<{ content: Array<{ type: string; text?: string }> }>)({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 8192,
+    messages: [{
+      role: 'user',
+      content: [
+        {
+          type: 'document',
+          source: { type: 'base64', media_type: 'application/pdf', data: base64 },
+        },
+        {
+          type: 'text',
+          text: 'Estrai tutto il testo di questo documento tecnico. Restituisci SOLO il testo grezzo, senza commenti né formattazione aggiuntiva.',
+        },
+      ],
+    }],
   })
-  if (!res.ok) {
-    const err = await res.text()
-    throw new Error(`Anthropic PDF extract error ${res.status}: ${err}`)
-  }
-  const data = await res.json()
-  return (data.content?.[0]?.text as string) ?? ''
+
+  return response.content[0]?.text ?? ''
 }
 
-// Uses the authenticated SSR client so RLS (auth.uid() IS NOT NULL) is satisfied
 async function processDocument(
   docId: string,
   fileBuffer: ArrayBuffer,
@@ -70,14 +60,18 @@ async function processDocument(
       text = new TextDecoder('utf-8', { fatal: false }).decode(fileBuffer)
     }
   } catch (err) {
-    console.error('[KB] Text extraction failed:', err)
-    await supabase.from('knowledge_documents').update({ status: 'error' }).eq('id', docId)
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error('[KB] Text extraction failed:', msg)
+    await supabase.from('knowledge_documents')
+      .update({ status: 'error', description: `Estrazione testo fallita: ${msg.slice(0, 200)}` })
+      .eq('id', docId)
     return
   }
 
   if (!text.trim()) {
-    console.error('[KB] Empty text for doc', docId)
-    await supabase.from('knowledge_documents').update({ status: 'error' }).eq('id', docId)
+    await supabase.from('knowledge_documents')
+      .update({ status: 'error', description: 'Testo estratto vuoto' })
+      .eq('id', docId)
     return
   }
 
@@ -91,19 +85,22 @@ async function processDocument(
 
     for (let i = 0; i < rows.length; i += 50) {
       const { error } = await supabase.from('knowledge_chunks').insert(rows.slice(i, i + 50))
-      if (error) throw new Error(`Chunk insert error: ${error.message}`)
+      if (error) throw new Error(`Chunk insert: ${error.message}`)
     }
 
     const { error: updErr } = await supabase
       .from('knowledge_documents')
       .update({ status: 'ready', chunk_count: rows.length })
       .eq('id', docId)
-    if (updErr) throw new Error(`Status update error: ${updErr.message}`)
+    if (updErr) throw new Error(`Status update: ${updErr.message}`)
 
     console.log(`[KB] Document ${docId} ready: ${rows.length} chunks`)
   } catch (err) {
-    console.error('[KB] Processing failed:', err)
-    await supabase.from('knowledge_documents').update({ status: 'error' }).eq('id', docId)
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error('[KB] Processing failed:', msg)
+    await supabase.from('knowledge_documents')
+      .update({ status: 'error', description: `Indicizzazione fallita: ${msg.slice(0, 200)}` })
+      .eq('id', docId)
   }
 }
 
@@ -127,8 +124,8 @@ export async function POST(req: NextRequest) {
   }
 
   const fileBuffer = await file.arrayBuffer()
-
   const fileName = `${Date.now()}_${file.name}`
+
   const { error: uploadErr } = await supabase.storage
     .from('knowledge-documents')
     .upload(fileName, fileBuffer, { contentType: file.type })
@@ -159,12 +156,11 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: `Errore DB: ${docErr?.message}` }, { status: 500 })
   }
 
-  // Process synchronously using the authenticated SSR client (satisfies RLS)
   await processDocument(doc.id, fileBuffer, fileType, title, supabase)
 
   const { data: updated } = await supabase
     .from('knowledge_documents')
-    .select('status, chunk_count')
+    .select('status, chunk_count, description')
     .eq('id', doc.id)
     .single()
 
@@ -172,5 +168,6 @@ export async function POST(req: NextRequest) {
     id: doc.id,
     status: updated?.status ?? 'processing',
     chunks: updated?.chunk_count ?? 0,
+    error_detail: updated?.status === 'error' ? updated?.description : undefined,
   })
 }
