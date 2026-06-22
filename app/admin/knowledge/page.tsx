@@ -71,6 +71,7 @@ export default async function KnowledgePage() {
           status: d.status,
           chunk_count: d.chunk_count,
           created_at: d.created_at,
+          description: d.description,
         })) ?? []} />
       </div>
     </div>

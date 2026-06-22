@@ -12,6 +12,7 @@ interface Doc {
   status: string
   chunk_count: number
   created_at: string
+  description?: string | null
 }
 
 const statusColor: Record<string, { bg: string; text: string }> = {
@@ -109,6 +110,11 @@ export default function KnowledgeDocList({ docs: initial }: { docs: Doc[] }) {
                   {doc.chunk_count ? ` · ${doc.chunk_count} chunk` : ''}
                   {' · '}{format(new Date(doc.created_at), 'dd MMM yyyy', { locale: it })}
                 </p>
+                {doc.status === 'error' && doc.description && (
+                  <p style={{ fontSize: 11, color: '#ff3b30', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {doc.description}
+                  </p>
+                )}
               </div>
 
               <span style={{

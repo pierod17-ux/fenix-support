@@ -10,6 +10,7 @@ export default function DocumentUpload() {
   const [file, setFile] = useState<File | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
 
@@ -18,81 +19,123 @@ export default function DocumentUpload() {
     if (!title || !file) return
     setLoading(true)
     setError('')
+    setSuccess(false)
 
     const formData = new FormData()
     formData.append('title', title)
     formData.append('description', description)
     formData.append('file', file)
 
-    const res = await fetch('/api/knowledge/upload', { method: 'POST', body: formData })
-    if (!res.ok) {
-      const d = await res.json()
-      setError(d.error ?? 'Errore upload')
-      setLoading(false)
-      return
-    }
+    try {
+      const res = await fetch('/api/knowledge/upload', { method: 'POST', body: formData })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        setError(d.error ?? 'Errore upload')
+        setLoading(false)
+        return
+      }
 
-    setTitle('')
-    setDescription('')
-    setFile(null)
-    setOpen(false)
-    router.refresh()
-    setLoading(false)
+      setTitle('')
+      setDescription('')
+      setFile(null)
+      setSuccess(true)
+      setLoading(false)
+      router.refresh()
+      // Auto-hide form after 3 seconds
+      setTimeout(() => { setOpen(false); setSuccess(false) }, 3000)
+    } catch {
+      setError('Errore di rete. Riprova.')
+      setLoading(false)
+    }
   }
 
   return (
-    <div>
+    <div style={{ marginBottom: 20 }}>
       {!open ? (
         <button onClick={() => setOpen(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all hover:opacity-90"
-          style={{ background: 'var(--accent)', color: 'white' }}>
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1v10M3 6l5-5 5 5M1 13h14"/></svg>
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '10px 18px', borderRadius: 12, border: 'none',
+            background: 'var(--accent)', color: 'white',
+            fontSize: 14, fontWeight: 600, cursor: 'pointer',
+          }}>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <path d="M8 1v10M3 6l5-5 5 5M1 13h14"/>
+          </svg>
           Carica documento
         </button>
       ) : (
-        <div className="rounded-2xl p-5"
-          style={{ background: 'var(--surface)', border: '1px solid var(--accent)' }}>
-          <h3 className="font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>Carica nuovo documento</h3>
-          <form onSubmit={handleUpload} className="space-y-3">
-            <div>
-              <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Titolo *</label>
-              <input value={title} onChange={e => setTitle(e.target.value)} required
-                placeholder="Es. Manuale manutenzione Endosphere Body v2.1"
-                className="w-full px-3 py-2 rounded-xl text-sm"
-                style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
+        <div style={{
+          background: 'var(--surface)', border: '1.5px solid var(--accent)',
+          borderRadius: 16, padding: 20,
+        }}>
+          <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 16 }}>
+            Carica nuovo documento
+          </h3>
+
+          {success ? (
+            <div style={{
+              background: 'rgba(52,199,89,0.10)', borderRadius: 12,
+              padding: '14px 16px', color: '#34c759', fontSize: 14, fontWeight: 500,
+            }}>
+              Documento caricato. Elaborazione in corso (30-60 sec) — la pagina si aggiornerà automaticamente.
             </div>
-            <div>
-              <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Descrizione</label>
-              <input value={description} onChange={e => setDescription(e.target.value)}
-                placeholder="Breve descrizione del contenuto"
-                className="w-full px-3 py-2 rounded-xl text-sm"
-                style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
-            </div>
-            <div>
-              <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>File (PDF, DOCX, TXT) *</label>
-              <div
-                onClick={() => fileRef.current?.click()}
-                className="w-full px-3 py-4 rounded-xl text-sm text-center cursor-pointer"
-                style={{ background: 'var(--surface-2)', border: '2px dashed var(--border)', color: 'var(--text-secondary)' }}>
-                {file ? file.name : 'Clicca per selezionare un file'}
-                <input ref={fileRef} type="file" accept=".pdf,.docx,.txt" className="hidden"
-                  onChange={e => setFile(e.target.files?.[0] ?? null)} />
+          ) : (
+            <form onSubmit={handleUpload} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 13, color: 'var(--text-secondary)', marginBottom: 4 }}>Titolo *</label>
+                <input value={title} onChange={e => setTitle(e.target.value)} required
+                  placeholder="Es. Manuale manutenzione Endosphere Body v2.1"
+                  style={{
+                    width: '100%', padding: '8px 12px', borderRadius: 10, fontSize: 14,
+                    background: 'var(--surface-2)', border: '1px solid var(--border)',
+                    color: 'var(--text-primary)', boxSizing: 'border-box',
+                  }} />
               </div>
-            </div>
-            {error && <p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
-            <div className="flex gap-2 pt-1">
-              <button type="submit" disabled={loading}
-                className="px-4 py-2 rounded-xl text-sm font-medium hover:opacity-90 transition-all"
-                style={{ background: 'var(--accent)', color: 'white' }}>
-                {loading ? 'Caricamento...' : 'Carica e indicizza'}
-              </button>
-              <button type="button" onClick={() => setOpen(false)}
-                className="px-4 py-2 rounded-xl text-sm"
-                style={{ background: 'var(--surface-3)', color: 'var(--text-secondary)' }}>
-                Annulla
-              </button>
-            </div>
-          </form>
+              <div>
+                <label style={{ display: 'block', fontSize: 13, color: 'var(--text-secondary)', marginBottom: 4 }}>Descrizione</label>
+                <input value={description} onChange={e => setDescription(e.target.value)}
+                  placeholder="Breve descrizione del contenuto"
+                  style={{
+                    width: '100%', padding: '8px 12px', borderRadius: 10, fontSize: 14,
+                    background: 'var(--surface-2)', border: '1px solid var(--border)',
+                    color: 'var(--text-primary)', boxSizing: 'border-box',
+                  }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 13, color: 'var(--text-secondary)', marginBottom: 4 }}>File (PDF, TXT) *</label>
+                <div
+                  onClick={() => fileRef.current?.click()}
+                  style={{
+                    padding: '16px 12px', borderRadius: 10, fontSize: 13, textAlign: 'center',
+                    background: 'var(--surface-2)', border: '2px dashed var(--border)',
+                    color: 'var(--text-secondary)', cursor: 'pointer',
+                  }}>
+                  {file ? file.name : 'Clicca per selezionare un file'}
+                  <input ref={fileRef} type="file" accept=".pdf,.txt" style={{ display: 'none' }}
+                    onChange={e => setFile(e.target.files?.[0] ?? null)} />
+                </div>
+              </div>
+              {error && <p style={{ fontSize: 13, color: 'var(--danger)', margin: 0 }}>{error}</p>}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="submit" disabled={loading}
+                  style={{
+                    padding: '9px 18px', borderRadius: 10, border: 'none', fontSize: 14,
+                    fontWeight: 600, background: 'var(--accent)', color: 'white',
+                    cursor: loading ? 'default' : 'pointer', opacity: loading ? 0.7 : 1,
+                  }}>
+                  {loading ? 'Caricamento...' : 'Carica e indicizza'}
+                </button>
+                <button type="button" onClick={() => { setOpen(false); setError('') }}
+                  style={{
+                    padding: '9px 18px', borderRadius: 10, border: 'none', fontSize: 14,
+                    background: 'var(--surface-2)', color: 'var(--text-secondary)', cursor: 'pointer',
+                  }}>
+                  Annulla
+                </button>
+              </div>
+            </form>
+          )}
         </div>
       )}
     </div>
