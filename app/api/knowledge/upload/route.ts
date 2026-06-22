@@ -1,4 +1,5 @@
-import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
+import { SupabaseClient } from '@supabase/supabase-js'
 import { NextRequest } from 'next/server'
 
 export const maxDuration = 60
@@ -24,6 +25,7 @@ async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
     headers: {
       'x-api-key': process.env.ANTHROPIC_API_KEY!,
       'anthropic-version': '2023-06-01',
+      'anthropic-beta': 'pdfs-2024-09-25',
       'content-type': 'application/json',
     },
     body: JSON.stringify({
@@ -52,9 +54,14 @@ async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
   return (data.content?.[0]?.text as string) ?? ''
 }
 
-async function processDocument(docId: string, fileBuffer: ArrayBuffer, fileType: string, title: string) {
-  const supabase = await createServiceClient()
-
+// Uses the authenticated SSR client so RLS (auth.uid() IS NOT NULL) is satisfied
+async function processDocument(
+  docId: string,
+  fileBuffer: ArrayBuffer,
+  fileType: string,
+  title: string,
+  supabase: SupabaseClient,
+) {
   let text = ''
   try {
     if (fileType === 'pdf') {
@@ -69,6 +76,7 @@ async function processDocument(docId: string, fileBuffer: ArrayBuffer, fileType:
   }
 
   if (!text.trim()) {
+    console.error('[KB] Empty text for doc', docId)
     await supabase.from('knowledge_documents').update({ status: 'error' }).eq('id', docId)
     return
   }
@@ -90,7 +98,7 @@ async function processDocument(docId: string, fileBuffer: ArrayBuffer, fileType:
       .from('knowledge_documents')
       .update({ status: 'ready', chunk_count: rows.length })
       .eq('id', docId)
-    if (updErr) console.error('[KB] Status update error:', updErr)
+    if (updErr) throw new Error(`Status update error: ${updErr.message}`)
 
     console.log(`[KB] Document ${docId} ready: ${rows.length} chunks`)
   } catch (err) {
@@ -151,13 +159,18 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: `Errore DB: ${docErr?.message}` }, { status: 500 })
   }
 
-  await processDocument(doc.id, fileBuffer, fileType, title)
+  // Process synchronously using the authenticated SSR client (satisfies RLS)
+  await processDocument(doc.id, fileBuffer, fileType, title, supabase)
 
-  const { data: updated } = await (await createServiceClient())
+  const { data: updated } = await supabase
     .from('knowledge_documents')
     .select('status, chunk_count')
     .eq('id', doc.id)
     .single()
 
-  return Response.json({ id: doc.id, status: updated?.status ?? 'processing', chunks: updated?.chunk_count ?? 0 })
+  return Response.json({
+    id: doc.id,
+    status: updated?.status ?? 'processing',
+    chunks: updated?.chunk_count ?? 0,
+  })
 }
