@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { NextRequest } from 'next/server'
+import { NextRequest, after } from 'next/server'
 
 export const maxDuration = 30
 
@@ -55,16 +55,16 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: `Errore DB: ${docErr?.message}` }, { status: 500 })
   }
 
-  // Fire-and-forget: edge function handles the heavy PDF processing (150s timeout)
+  // Use next/after so Netlify keeps the function alive until the edge function is called
   const edgeUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/process-kb-document`
-  fetch(edgeUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      document_id: doc.id,
-      anthropic_api_key: process.env.ANTHROPIC_API_KEY,
-    }),
-  }).catch(() => {})
+  const docId = doc.id
+  after(async () => {
+    await fetch(edgeUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ document_id: docId }),
+    })
+  })
 
   return Response.json({ id: doc.id, status: 'processing', chunks: 0 })
 }
