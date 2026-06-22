@@ -442,19 +442,19 @@ export default function ChatInterface() {
   )
 }
 
+const ASSISTANT_AVATAR = '/avatar.png'
+
 function Avatar() {
   return (
-    <div style={{
-      width: 30, height: 30, borderRadius: 10,
-      background: 'linear-gradient(135deg, #0071e3 0%, #00a2ff 100%)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2,
-    }}>
-      <svg width="13" height="13" viewBox="0 0 32 32" fill="none">
-        <circle cx="16" cy="16" r="10" stroke="white" strokeWidth="2.5"/>
-        <path d="M10 16 L14 20 L22 12" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-      </svg>
-    </div>
+    <img
+      src={ASSISTANT_AVATAR}
+      alt="Assistente"
+      style={{
+        width: 30, height: 30, borderRadius: 10,
+        objectFit: 'cover',
+        flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2,
+      }}
+    />
   )
 }
 
