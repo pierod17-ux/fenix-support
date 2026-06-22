@@ -37,6 +37,7 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
 
   return (
     <div style={{ maxWidth: 860, margin: '0 auto', padding: '0 0 48px' }}>
+      <style>{`.info-link { font-size: 13px; font-weight: 500; color: var(--accent); line-height: 1.5; text-decoration: none; } .info-link:hover { text-decoration: underline; }`}</style>
 
       {/* Header */}
       <div style={{
@@ -230,9 +231,7 @@ function InfoRow({ label, value, link }: { label: string; value: string | null; 
         {label}
       </span>
       {link ? (
-        <a href={link} style={{ fontSize: 13, fontWeight: 500, color: 'var(--accent)', lineHeight: '1.5', textDecoration: 'none' }}
-          onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
-          onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}>
+        <a href={link} className="info-link">
           {value}
         </a>
       ) : (
