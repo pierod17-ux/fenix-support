@@ -1,5 +1,8 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { NextRequest, after } from 'next/server'
+import { NextRequest } from 'next/server'
+
+// Timeout per-route: PDF parsing + embedding OpenAI possono richiedere >10s
+export const maxDuration = 60
 
 const CHUNK_SIZE = 800
 const CHUNK_OVERLAP = 100
@@ -146,10 +149,12 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: `Errore DB: ${docErr?.message}` }, { status: 500 })
   }
 
-  // Lancia processing DOPO la risposta — nessun timeout di request
-  after(async () => {
-    await processDocument(doc.id, fileBuffer, fileType, title)
-  })
+  // Elabora sincronamente — maxDuration=60 evita timeout
+  await processDocument(doc.id, fileBuffer, fileType, title)
 
-  return Response.json({ id: doc.id, status: 'processing' })
+  // Rileggi lo stato finale
+  const { data: updated } = await (await createServiceClient())
+    .from('knowledge_documents').select('status, chunk_count').eq('id', doc.id).single()
+
+  return Response.json({ id: doc.id, status: updated?.status, chunks: updated?.chunk_count })
 }

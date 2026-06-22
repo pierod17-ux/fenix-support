@@ -131,6 +131,9 @@ export default function AdminSidebar({ role, displayName }: { role: string; disp
             <span style={{ width: 14, height: 14, display: 'flex', alignItems: 'center' }}><IconLogout /></span>
             Esci
           </button>
+          <p style={{ fontSize: 10, color: 'var(--text-tertiary)', opacity: 0.45, marginTop: 8, paddingLeft: 4 }}>
+            Fenix Support v1.0.0
+          </p>
         </div>
       </aside>
 
