@@ -1,7 +1,6 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { NextRequest } from 'next/server'
 
-// Timeout per-route: PDF parsing può richiedere >10s su file grandi
 export const maxDuration = 60
 
 const CHUNK_SIZE = 800
@@ -19,11 +18,38 @@ function chunkText(text: string): string[] {
 }
 
 async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
-  // pdf-parse è in serverExternalPackages: non viene bundled da webpack
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const pdfParse = require('pdf-parse') as (buf: Buffer) => Promise<{ text: string }>
-  const data = await pdfParse(Buffer.from(buffer))
-  return data.text
+  const base64 = Buffer.from(buffer).toString('base64')
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': process.env.ANTHROPIC_API_KEY!,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 8192,
+      messages: [{
+        role: 'user',
+        content: [
+          {
+            type: 'document',
+            source: { type: 'base64', media_type: 'application/pdf', data: base64 },
+          },
+          {
+            type: 'text',
+            text: 'Estrai tutto il testo di questo documento tecnico. Restituisci SOLO il testo grezzo, senza commenti né formattazione aggiuntiva.',
+          },
+        ],
+      }],
+    }),
+  })
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Anthropic PDF extract error ${res.status}: ${err}`)
+  }
+  const data = await res.json()
+  return (data.content?.[0]?.text as string) ?? ''
 }
 
 async function processDocument(docId: string, fileBuffer: ArrayBuffer, fileType: string, title: string) {
@@ -34,7 +60,7 @@ async function processDocument(docId: string, fileBuffer: ArrayBuffer, fileType:
     if (fileType === 'pdf') {
       text = await extractPdfText(fileBuffer)
     } else {
-      text = new TextDecoder().decode(fileBuffer)
+      text = new TextDecoder('utf-8', { fatal: false }).decode(fileBuffer)
     }
   } catch (err) {
     console.error('[KB] Text extraction failed:', err)
@@ -43,7 +69,6 @@ async function processDocument(docId: string, fileBuffer: ArrayBuffer, fileType:
   }
 
   if (!text.trim()) {
-    console.error('[KB] No text extracted from document')
     await supabase.from('knowledge_documents').update({ status: 'error' }).eq('id', docId)
     return
   }
@@ -54,22 +79,22 @@ async function processDocument(docId: string, fileBuffer: ArrayBuffer, fileType:
       document_id: docId,
       title: `${title} (parte ${i + 1})`,
       content,
-      // embedding NULL: usiamo ricerca full-text (tsvector), non vettori OpenAI
     }))
 
-    const batchSize = 50
-    for (let i = 0; i < rows.length; i += batchSize) {
-      await supabase.from('knowledge_chunks').insert(rows.slice(i, i + batchSize))
+    for (let i = 0; i < rows.length; i += 50) {
+      const { error } = await supabase.from('knowledge_chunks').insert(rows.slice(i, i + 50))
+      if (error) throw new Error(`Chunk insert error: ${error.message}`)
     }
 
-    await supabase
+    const { error: updErr } = await supabase
       .from('knowledge_documents')
       .update({ status: 'ready', chunk_count: rows.length })
       .eq('id', docId)
+    if (updErr) console.error('[KB] Status update error:', updErr)
 
     console.log(`[KB] Document ${docId} ready: ${rows.length} chunks`)
   } catch (err) {
-    console.error('[KB] Chunking/insert failed:', err)
+    console.error('[KB] Processing failed:', err)
     await supabase.from('knowledge_documents').update({ status: 'error' }).eq('id', docId)
   }
 }
@@ -89,8 +114,8 @@ export async function POST(req: NextRequest) {
   }
 
   const fileType = file.name.split('.').pop()?.toLowerCase() ?? 'txt'
-  if (!['pdf', 'docx', 'txt'].includes(fileType)) {
-    return Response.json({ error: 'Formato non supportato (PDF, DOCX, TXT)' }, { status: 400 })
+  if (!['pdf', 'txt'].includes(fileType)) {
+    return Response.json({ error: 'Formato non supportato (PDF, TXT)' }, { status: 400 })
   }
 
   const fileBuffer = await file.arrayBuffer()
@@ -101,7 +126,6 @@ export async function POST(req: NextRequest) {
     .upload(fileName, fileBuffer, { contentType: file.type })
 
   if (uploadErr) {
-    console.error('[KB] Storage upload error:', uploadErr)
     return Response.json({ error: `Upload fallito: ${uploadErr.message}` }, { status: 500 })
   }
 
@@ -124,14 +148,16 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (docErr || !doc) {
-    console.error('[KB] DB insert error:', docErr)
     return Response.json({ error: `Errore DB: ${docErr?.message}` }, { status: 500 })
   }
 
   await processDocument(doc.id, fileBuffer, fileType, title)
 
   const { data: updated } = await (await createServiceClient())
-    .from('knowledge_documents').select('status, chunk_count').eq('id', doc.id).single()
+    .from('knowledge_documents')
+    .select('status, chunk_count')
+    .eq('id', doc.id)
+    .single()
 
-  return Response.json({ id: doc.id, status: updated?.status, chunks: updated?.chunk_count })
+  return Response.json({ id: doc.id, status: updated?.status ?? 'processing', chunks: updated?.chunk_count ?? 0 })
 }
