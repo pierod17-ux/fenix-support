@@ -197,17 +197,12 @@ export default function ChatInterface() {
         <div style={{ width: '100%', maxWidth: 420, paddingBottom: 32 }}>
           {/* Hero */}
           <div style={{ textAlign: 'center', marginBottom: 28 }}>
-            <div style={{
-              width: 64, height: 64, borderRadius: 18,
-              background: 'linear-gradient(135deg, #0071e3 0%, #00a2ff 100%)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              margin: '0 auto 16px', boxShadow: '0 4px 16px rgba(0,113,227,0.3)',
-            }}>
-              <svg width="28" height="28" viewBox="0 0 32 32" fill="none">
-                <circle cx="16" cy="16" r="10" stroke="white" strokeWidth="2.5"/>
-                <path d="M10 16 L14 20 L22 12" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </div>
+            <img src="/avatar.png" alt="Assistente" style={{
+              width: 80, height: 80, borderRadius: 20,
+              objectFit: 'cover', display: 'block',
+              margin: '0 auto 16px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+            }} />
             <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.4px' }}>
               Assistenza Tecnica
             </h1>
