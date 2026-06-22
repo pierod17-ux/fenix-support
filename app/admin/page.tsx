@@ -1,4 +1,4 @@
-import { createServiceClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { format } from 'date-fns'
 import { it } from 'date-fns/locale'
@@ -21,7 +21,10 @@ const priorityLabel: Record<string, string> = {
 }
 
 export default async function AdminTickets() {
-  const supabase = await createServiceClient()
+  // Sessione autenticata (l'admin è già loggato via layout): la RLS di
+  // support_tickets richiede auth.uid() valorizzato. NON usare createServiceClient
+  // qui: se manca SUPABASE_SERVICE_ROLE_KEY ripiega su anon e la lista risulta vuota.
+  const supabase = await createClient()
 
   const { data: tickets } = await supabase
     .from('support_tickets')
@@ -126,16 +129,13 @@ export default async function AdminTickets() {
               {tickets.map((ticket, i) => {
                 const sc = statusColor[ticket.status] ?? { bg: 'var(--surface-2)', text: 'var(--text-secondary)' }
                 return (
-                  <Link key={ticket.id} href={`/admin/tickets/${ticket.id}`} style={{
+                  <Link key={ticket.id} href={`/admin/tickets/${ticket.id}`} className="admin-ticket-row" style={{
                     display: 'flex', alignItems: 'center', gap: 14,
                     padding: '14px 20px',
                     borderTop: i > 0 ? '1px solid var(--border)' : 'none',
                     textDecoration: 'none',
                     transition: 'background 0.12s',
-                  }}
-                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                  >
+                  }}>
                     {/* Priority dot */}
                     <div style={{
                       width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
@@ -172,6 +172,10 @@ export default async function AdminTickets() {
           )}
         </div>
       </div>
+
+      <style>{`
+        .admin-ticket-row:hover { background: var(--surface-2); }
+      `}</style>
     </div>
   )
 }
