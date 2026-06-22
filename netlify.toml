@@ -8,3 +8,7 @@
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+# Aumenta timeout per la funzione Next.js (PDF parsing + embedding OpenAI)
+[functions."___netlify-server-handler"]
+  timeout = 60

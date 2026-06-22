@@ -30,10 +30,10 @@ async function embedTexts(texts: string[]): Promise<number[][]> {
 }
 
 async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
-  const { getDocumentProxy, extractText } = await import('unpdf')
-  const pdf = await getDocumentProxy(new Uint8Array(buffer))
-  const { text } = await extractText(pdf, { mergePages: true })
-  return text
+  // Usa il path interno per evitare il problema webpack con fs.readFileSync nel test loader
+  const pdfParse = (await import('pdf-parse/lib/pdf-parse.js')).default
+  const data = await pdfParse(Buffer.from(buffer))
+  return data.text
 }
 
 export async function POST(req: NextRequest) {
