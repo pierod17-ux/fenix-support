@@ -1,7 +1,7 @@
-import { createServiceClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { NextRequest } from 'next/server'
 
-const CHUNK_SIZE = 800  // characters per chunk
+const CHUNK_SIZE = 800
 const CHUNK_OVERLAP = 100
 
 function chunkText(text: string): string[] {
@@ -29,10 +29,21 @@ async function embedTexts(texts: string[]): Promise<number[][]> {
   return data.data.map((d: { embedding: number[] }) => d.embedding)
 }
 
+async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
+  const { getDocumentProxy, extractText } = await import('unpdf')
+  const pdf = await getDocumentProxy(new Uint8Array(buffer))
+  const { text } = await extractText(pdf, { mergePages: true })
+  return text
+}
+
 export async function POST(req: NextRequest) {
-  const supabase = await createServiceClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  // SSR client per leggere la sessione admin
+  const authClient = await createClient()
+  const { data: { user } } = await authClient.auth.getUser()
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // Service client per storage e DB (bypassa RLS)
+  const supabase = await createServiceClient()
 
   const formData = await req.formData()
   const title = formData.get('title') as string
@@ -48,10 +59,11 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: 'Formato non supportato' }, { status: 400 })
   }
 
+  const fileBuffer = await file.arrayBuffer()
+
   // Upload file su Supabase Storage
   const fileName = `${Date.now()}_${file.name}`
-  const fileBuffer = await file.arrayBuffer()
-  const { data: uploadData, error: uploadErr } = await supabase.storage
+  const { error: uploadErr } = await supabase.storage
     .from('knowledge-documents')
     .upload(fileName, fileBuffer, { contentType: file.type })
 
@@ -82,14 +94,26 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: 'DB insert failed' }, { status: 500 })
   }
 
-  // Estrai testo (solo TXT per ora; PDF/DOCX richiedono parser aggiuntivo)
+  // Estrai testo in base al tipo
   let text = ''
-  if (fileType === 'txt') {
-    text = await file.text()
-  } else {
-    // Per PDF/DOCX: salva con status 'processing', processa in background via Edge Function
-    // Per ora uso il testo grezzo del buffer come placeholder
-    text = `Documento: ${title}\n${description ?? ''}\n[Elaborazione contenuto avanzato in corso]`
+  try {
+    if (fileType === 'txt') {
+      text = await file.text()
+    } else if (fileType === 'pdf') {
+      text = await extractPdfText(fileBuffer)
+    } else {
+      // DOCX: fallback testo grezzo (encoding binario, qualcosa viene estratto)
+      text = await file.text()
+    }
+  } catch (err) {
+    console.error('Text extraction failed:', err)
+    await supabase.from('knowledge_documents').update({ status: 'error' }).eq('id', doc.id)
+    return Response.json({ error: 'Estrazione testo fallita' }, { status: 500 })
+  }
+
+  if (!text.trim()) {
+    await supabase.from('knowledge_documents').update({ status: 'error' }).eq('id', doc.id)
+    return Response.json({ error: 'Nessun testo estratto dal documento' }, { status: 422 })
   }
 
   // Chunking + embedding
@@ -117,13 +141,11 @@ export async function POST(req: NextRequest) {
       .from('knowledge_documents')
       .update({ status: 'ready', chunk_count: totalChunks })
       .eq('id', doc.id)
-  } catch (err) {
-    await supabase
-      .from('knowledge_documents')
-      .update({ status: 'error' })
-      .eq('id', doc.id)
-    console.error('Embedding failed:', err)
-  }
 
-  return Response.json({ id: doc.id })
+    return Response.json({ id: doc.id, chunks: totalChunks })
+  } catch (err) {
+    await supabase.from('knowledge_documents').update({ status: 'error' }).eq('id', doc.id)
+    console.error('Embedding failed:', err)
+    return Response.json({ error: 'Indicizzazione fallita' }, { status: 500 })
+  }
 }
