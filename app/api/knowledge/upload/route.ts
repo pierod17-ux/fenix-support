@@ -65,7 +65,8 @@ export async function POST(req: NextRequest) {
     .upload(fileName, fileBuffer, { contentType: file.type })
 
   if (uploadErr) {
-    return Response.json({ error: 'Upload storage failed' }, { status: 500 })
+    console.error('Storage upload error:', uploadErr)
+    return Response.json({ error: `Upload storage failed: ${uploadErr.message}` }, { status: 500 })
   }
 
   const { data: { publicUrl } } = supabase.storage
@@ -88,7 +89,8 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (docErr || !doc) {
-    return Response.json({ error: 'DB insert failed' }, { status: 500 })
+    console.error('DB insert error:', docErr)
+    return Response.json({ error: `DB insert failed: ${docErr?.message}` }, { status: 500 })
   }
 
   // Estrai testo in base al tipo
