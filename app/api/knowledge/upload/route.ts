@@ -1,5 +1,5 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { NextRequest, after } from 'next/server'
+import { NextRequest } from 'next/server'
 
 export const maxDuration = 30
 
@@ -15,11 +15,7 @@ function chunkText(text: string): string[] {
   return chunks.filter(c => c.length > 50)
 }
 
-async function insertChunks(
-  docId: string,
-  title: string,
-  chunks: string[]
-) {
+async function insertChunks(docId: string, title: string, chunks: string[]) {
   const svc = await createServiceClient()
   const rows = chunks.map((content, i) => ({
     document_id: docId,
@@ -28,65 +24,11 @@ async function insertChunks(
   }))
   for (let i = 0; i < rows.length; i += 50) {
     const { error } = await svc.from('knowledge_chunks').insert(rows.slice(i, i + 50))
-    if (error) throw new Error(`Chunk insert batch ${i}: ${error.message}`)
+    if (error) throw new Error(`Chunk insert: ${error.message}`)
   }
   await svc.from('knowledge_documents')
     .update({ status: 'ready', chunk_count: rows.length })
     .eq('id', docId)
-  console.log('[KB-UPLOAD] doc ready, chunks:', rows.length)
-}
-
-async function processPdf(docId: string, title: string, fileBuffer: ArrayBuffer) {
-  const svc = await createServiceClient()
-  try {
-    const base64 = Buffer.from(fileBuffer).toString('base64')
-    console.log('[KB-UPLOAD] PDF: calling Anthropic, size:', fileBuffer.byteLength)
-
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': process.env.ANTHROPIC_API_KEY!,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 4096,
-        messages: [{
-          role: 'user',
-          content: [
-            {
-              type: 'document',
-              source: { type: 'base64', media_type: 'application/pdf', data: base64 },
-            },
-            {
-              type: 'text',
-              text: 'Estrai tutto il testo da questo documento PDF. Restituisci SOLO il testo estratto, senza commenti o formattazione aggiuntiva.',
-            },
-          ],
-        }],
-      }),
-    })
-
-    if (!res.ok) {
-      const err = await res.text()
-      throw new Error(`Anthropic ${res.status}: ${err.slice(0, 200)}`)
-    }
-
-    const data = await res.json()
-    const text: string = data.content?.[0]?.text ?? ''
-    console.log('[KB-UPLOAD] PDF: text extracted, length:', text.length)
-
-    if (!text.trim()) throw new Error('Anthropic ha restituito testo vuoto')
-
-    const chunks = chunkText(text)
-    await insertChunks(docId, title, chunks)
-  } catch (e) {
-    console.log('[KB-UPLOAD] PDF error:', String(e))
-    await svc.from('knowledge_documents')
-      .update({ status: 'error', description: String(e).slice(0, 300) })
-      .eq('id', docId)
-  }
 }
 
 export async function POST(req: NextRequest) {
@@ -123,41 +65,27 @@ export async function POST(req: NextRequest) {
     .from('knowledge-documents')
     .getPublicUrl(fileName)
 
-  // TXT: process inline (fast, no timeout risk)
-  if (fileType === 'txt') {
-    const text = new TextDecoder('utf-8').decode(fileBuffer)
-    const chunks = chunkText(text)
-
-    const { data: doc, error: docErr } = await supabase
-      .from('knowledge_documents')
-      .insert({
-        title,
-        description: description || null,
-        file_url: publicUrl,
-        file_type: fileType,
-        status: 'processing',
-        chunk_count: 0,
-        uploaded_by: user.id,
-      })
-      .select()
-      .single()
-
-    if (docErr || !doc) {
-      return Response.json({ error: `Errore DB: ${docErr?.message}` }, { status: 500 })
+  // Extract text
+  let text: string
+  try {
+    if (fileType === 'txt') {
+      text = new TextDecoder('utf-8').decode(fileBuffer)
+    } else {
+      // pdf-parse: dynamic import avoids webpack issues with test file paths
+      const pdfParse = (await import('pdf-parse/lib/pdf-parse.js')).default
+      const data = await pdfParse(Buffer.from(fileBuffer))
+      text = data.text
     }
-
-    try {
-      await insertChunks(doc.id, title, chunks)
-      return Response.json({ id: doc.id, status: 'ready', chunks: chunks.length })
-    } catch (e) {
-      await supabase.from('knowledge_documents')
-        .update({ status: 'error', description: String(e).slice(0, 300) })
-        .eq('id', doc.id)
-      return Response.json({ error: 'Indicizzazione fallita', detail: String(e) }, { status: 500 })
-    }
+  } catch (e) {
+    return Response.json({ error: `Estrazione testo fallita: ${String(e).slice(0, 200)}` }, { status: 500 })
   }
 
-  // PDF: insert record, then process via Anthropic in after() background callback
+  if (!text.trim()) {
+    return Response.json({ error: 'Nessun testo estratto dal documento' }, { status: 400 })
+  }
+
+  const chunks = chunkText(text)
+
   const { data: doc, error: docErr } = await supabase
     .from('knowledge_documents')
     .insert({
@@ -176,9 +104,13 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: `Errore DB: ${docErr?.message}` }, { status: 500 })
   }
 
-  const docId = doc.id
-  const capturedBuffer = fileBuffer.slice(0)
-  after(() => processPdf(docId, title, capturedBuffer))
-
-  return Response.json({ id: doc.id, status: 'processing', chunks: 0 })
+  try {
+    await insertChunks(doc.id, title, chunks)
+    return Response.json({ id: doc.id, status: 'ready', chunks: chunks.length })
+  } catch (e) {
+    await supabase.from('knowledge_documents')
+      .update({ status: 'error', description: String(e).slice(0, 300) })
+      .eq('id', doc.id)
+    return Response.json({ error: 'Indicizzazione fallita', detail: String(e) }, { status: 500 })
+  }
 }
