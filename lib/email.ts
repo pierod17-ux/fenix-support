@@ -46,12 +46,14 @@ export async function sendTechnicianInviteEmail(params: {
   </div>
 </body></html>`
 
-  return getResend().emails.send({
+  const result = await getResend().emails.send({
     from: FROM,
     to,
     subject: 'Invito al portale tecnici Fenix — Attiva il tuo account',
     html,
   })
+  if (result.error) throw new Error(`Resend: ${result.error.message}`)
+  return result
 }
 
 export async function sendPasswordResetEmail(params: {
@@ -87,12 +89,14 @@ export async function sendPasswordResetEmail(params: {
   </div>
 </body></html>`
 
-  return getResend().emails.send({
+  const result = await getResend().emails.send({
     from: FROM,
     to,
     subject: 'Fenix — Reimposta la tua password',
     html,
   })
+  if (result.error) throw new Error(`Resend: ${result.error.message}`)
+  return result
 }
 
 export async function sendDirectChatEmail(params: {
@@ -142,12 +146,14 @@ export async function sendDirectChatEmail(params: {
   </div>
 </body></html>`
 
-  return getResend().emails.send({
+  const result = await getResend().emails.send({
     from: FROM,
     to,
     subject: `[Chat diretta] ${customerName} — ${machineName}`,
     html,
   })
+  if (result.error) throw new Error(`Resend: ${result.error.message}`)
+  return result
 }
 
 export async function sendEscalationEmail(params: {
@@ -221,10 +227,12 @@ export async function sendEscalationEmail(params: {
 </body>
 </html>`
 
-  return getResend().emails.send({
+  const result = await getResend().emails.send({
     from: FROM,
     to,
     subject: `[Ticket #${ticketId.slice(0, 8).toUpperCase()}] ${subject} — ${priority.toUpperCase()}`,
     html,
   })
+  if (result.error) throw new Error(`Resend: ${result.error.message}`)
+  return result
 }
