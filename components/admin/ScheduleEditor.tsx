@@ -117,7 +117,11 @@ export default function ScheduleEditor({
         account_status: 'invited',
       }
       setTechnicians(prev => [...prev, newTech])
-      setFormSuccess('Tecnico aggiunto! Email di invito inviata.')
+      if (d.emailError) {
+        setFormSuccess(`Tecnico aggiunto, ma email non inviata: ${d.emailError}`)
+      } else {
+        setFormSuccess('Tecnico aggiunto! Email di invito inviata.')
+      }
     }
 
     setFormLoading(false)

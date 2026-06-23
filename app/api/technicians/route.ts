@@ -56,13 +56,18 @@ export async function POST(req: NextRequest) {
   if (profileError) return Response.json({ error: profileError.message }, { status: 500 })
 
   // Send branded invite email via Resend
-  if (inviteLink) {
+  let emailError: string | null = null
+  if (!inviteLink) {
+    emailError = 'Link di invito non generato da Supabase'
+  } else {
     try {
-      await sendTechnicianInviteEmail({ to: email, name: display_name, inviteLink })
+      const result = await sendTechnicianInviteEmail({ to: email, name: display_name, inviteLink })
+      console.log('[INVITE] email sent:', JSON.stringify(result))
     } catch (err) {
-      console.error('Failed to send invite email:', err)
+      emailError = String(err)
+      console.error('[INVITE] email error:', err)
     }
   }
 
-  return Response.json({ ok: true, userId })
+  return Response.json({ ok: true, userId, emailError, inviteLink })
 }
