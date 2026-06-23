@@ -18,10 +18,10 @@ interface CustomerInfo {
 }
 
 const MACHINE_MODELS = [
-  'Endosphere Body',
-  'Endosphere Face',
-  'Endosphere Body & Face',
-  'Altro',
+  'Evolution',
+  'Essenza',
+  'Sensor Smart',
+  'Sensor Therapy',
 ]
 
 export default function ChatInterface() {
@@ -115,7 +115,7 @@ export default function ChatInterface() {
 
     setMessages([{
       role: 'assistant',
-      content: `Ciao **${customerInfo.name}**! Sono l'assistente tecnico Fenix.\n\nSono qui per aiutarti con la tua macchina **${customerInfo.machineModel}**${customerInfo.machineSerial ? ` (S/N: ${customerInfo.machineSerial})` : ''}.\n\nDescrivimi il problema che stai riscontrando.`,
+      content: `Ciao **${customerInfo.name}**! Sono **Aura**, l'assistente virtuale di Fenix. 🌐\n\nSono qui per aiutarti con la tua macchina **${customerInfo.machineModel}**${customerInfo.machineSerial ? ` (S/N: ${customerInfo.machineSerial})` : ''}. Puoi scrivermi nella tua lingua: ti risponderò nella stessa.\n\nDescrivimi pure il problema che stai riscontrando.`,
     }])
     setPhase('chat')
   }
