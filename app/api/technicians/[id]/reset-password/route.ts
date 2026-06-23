@@ -6,11 +6,10 @@ async function getAdminClient() {
   const sso = await createClient()
   const { data: { user } } = await sso.auth.getUser()
   if (!user) return null
-  const svc = await createServiceClient()
-  const { data: profile } = await svc
+  const { data: profile } = await sso
     .from('technician_profiles').select('role').eq('id', user.id).single()
   if (profile?.role !== 'admin') return null
-  return svc
+  return await createServiceClient()
 }
 
 export async function POST(
