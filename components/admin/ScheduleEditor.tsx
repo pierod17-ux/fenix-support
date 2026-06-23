@@ -205,8 +205,11 @@ export default function ScheduleEditor({
     if (res.ok) {
       const s = await res.json()
       setSchedules(prev => [...prev, s])
+      setAddingDay(null)
+    } else {
+      const d = await res.json().catch(() => ({}))
+      alert(`Impossibile salvare il turno: ${d.error ?? res.status}`)
     }
-    setAddingDay(null)
     setShiftLoading(false)
   }
 
