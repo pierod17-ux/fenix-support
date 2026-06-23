@@ -24,11 +24,29 @@ interface Technician {
   last_seen?: string | null
 }
 
-// Online se l'ultimo heartbeat è entro 2 minuti. `now` viene da uno stato
-// client (null durante SSR) per evitare mismatch di hydration.
+// Online se l'ultimo heartbeat è entro 5 minuti (tollerante col throttling dei
+// timer in background su mobile). `now` viene da uno stato client (null durante
+// SSR) per evitare mismatch di hydration.
+const ONLINE_WINDOW_MS = 5 * 60 * 1000
 function isOnline(lastSeen: string | null | undefined, now: number | null): boolean {
   if (!lastSeen || now === null) return false
-  return now - new Date(lastSeen).getTime() < 2 * 60 * 1000
+  const t = new Date(lastSeen).getTime()
+  if (Number.isNaN(t)) return false
+  return now - t < ONLINE_WINDOW_MS
+}
+
+// "visto 3 min fa" / "visto ieri" — info utile quando il tecnico è offline
+function lastSeenLabel(lastSeen: string | null | undefined, now: number | null): string | null {
+  if (!lastSeen || now === null) return null
+  const t = new Date(lastSeen).getTime()
+  if (Number.isNaN(t)) return null
+  const mins = Math.floor((now - t) / 60000)
+  if (mins < 1) return 'visto ora'
+  if (mins < 60) return `visto ${mins} min fa`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `visto ${hrs}h fa`
+  const days = Math.floor(hrs / 24)
+  return days === 1 ? 'visto ieri' : `visto ${days} giorni fa`
 }
 interface Schedule {
   id: string
@@ -481,7 +499,7 @@ export default function ScheduleEditor({
                                 {s.start_time} – {s.end_time}
                                 {isAdmin && (
                                   <span style={{ color: online ? '#34c759' : 'var(--text-tertiary)', fontWeight: 500 }}>
-                                    {' · '}{online ? 'collegato' : 'non collegato'}
+                                    {' · '}{online ? 'collegato' : (lastSeenLabel(tech?.last_seen, now) ?? 'mai collegato')}
                                   </span>
                                 )}
                               </p>
