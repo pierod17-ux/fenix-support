@@ -40,8 +40,16 @@ export async function POST(req: NextRequest) {
 
   const userId = linkData.user.id
   const rawLink = linkData.properties?.action_link ?? null
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://fenix-support.netlify.app'
-  const inviteLink = rawLink ? rawLink.replace(/^https?:\/\/localhost:\d+/, siteUrl) : null
+  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://fenix-support.netlify.app').replace(/\/$/, '')
+  let inviteLink: string | null = null
+  if (rawLink) {
+    const url = new URL(rawLink)
+    const redirectTo = url.searchParams.get('redirect_to')
+    if (redirectTo) {
+      url.searchParams.set('redirect_to', redirectTo.replace(/^https?:\/\/localhost:\d+/, siteUrl))
+    }
+    inviteLink = url.toString()
+  }
 
   // Create technician profile
   const { error: profileError } = await supabase
