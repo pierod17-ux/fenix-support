@@ -55,6 +55,7 @@ export default function ScheduleEditor({
   const [formLoading, setFormLoading] = useState(false)
   const [formError, setFormError] = useState('')
   const [formSuccess, setFormSuccess] = useState('')
+  const [inviteLink, setInviteLink] = useState<string | null>(null)
 
   // ─── Shift state ───
   const [addingDay, setAddingDay] = useState<number | null>(null)
@@ -65,14 +66,14 @@ export default function ScheduleEditor({
   const openAdd = useCallback(() => {
     setEditingTech(null)
     setForm({ display_name: '', email: '', phone: '', whatsapp: '' })
-    setFormError(''); setFormSuccess('')
+    setFormError(''); setFormSuccess(''); setInviteLink(null)
     setShowModal(true)
   }, [])
 
   const openEdit = useCallback((t: Technician) => {
     setEditingTech(t)
     setForm({ display_name: t.display_name ?? '', email: t.email ?? '', phone: t.phone ?? '', whatsapp: t.whatsapp ?? '' })
-    setFormError(''); setFormSuccess('')
+    setFormError(''); setFormSuccess(''); setInviteLink(null)
     setShowModal(true)
   }, [])
 
@@ -118,14 +119,15 @@ export default function ScheduleEditor({
       }
       setTechnicians(prev => [...prev, newTech])
       if (d.emailError) {
-        setFormSuccess(`Tecnico aggiunto, ma email non inviata: ${d.emailError}`)
+        setFormSuccess('Tecnico aggiunto. Email automatica non disponibile — usa il link qui sotto.')
+        setInviteLink(d.inviteLink ?? null)
       } else {
         setFormSuccess('Tecnico aggiunto! Email di invito inviata.')
+        setTimeout(() => setShowModal(false), 1800)
       }
     }
 
     setFormLoading(false)
-    setTimeout(() => setShowModal(false), 1800)
   }
 
   async function toggleStatus(t: Technician) {
@@ -552,11 +554,42 @@ export default function ScheduleEditor({
                 </div>
               )}
               {formSuccess && (
-                <div style={{
-                  marginTop: 16, padding: '10px 14px', borderRadius: 10,
-                  background: 'rgba(52,199,89,0.08)', color: '#34c759', fontSize: 13,
-                }}>
-                  {formSuccess}
+                <div style={{ marginTop: 16 }}>
+                  <div style={{
+                    padding: '10px 14px', borderRadius: 10,
+                    background: 'rgba(52,199,89,0.08)', color: '#34c759', fontSize: 13,
+                  }}>
+                    {formSuccess}
+                  </div>
+                  {inviteLink && (
+                    <div style={{ marginTop: 10 }}>
+                      <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 6 }}>
+                        Copia e invia questo link al tecnico (valido 24h):
+                      </p>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <input
+                          readOnly
+                          value={inviteLink}
+                          style={{
+                            flex: 1, padding: '8px 10px', borderRadius: 8, fontSize: 11,
+                            border: '1px solid var(--border)', background: 'var(--surface-2)',
+                            color: 'var(--text-secondary)', overflow: 'hidden',
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => { navigator.clipboard.writeText(inviteLink) }}
+                          style={{
+                            padding: '8px 14px', borderRadius: 8, border: 'none',
+                            background: 'var(--accent)', color: 'white',
+                            fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                          }}
+                        >
+                          Copia
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

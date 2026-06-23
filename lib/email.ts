@@ -1,7 +1,6 @@
 import { Resend } from 'resend'
 
-// damtec.it domain must be verified on resend.com/domains before using it as FROM
-const FROM = process.env.EMAIL_FROM ?? 'onboarding@resend.dev'
+const FROM = process.env.EMAIL_FROM ?? 'sensor-smart@damtec.net'
 
 function getResend() {
   const key = process.env.RESEND_API_KEY
