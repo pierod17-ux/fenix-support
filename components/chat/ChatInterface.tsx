@@ -6,6 +6,8 @@ import { createClient } from '@/lib/supabase/client'
 interface Message {
   role: 'user' | 'assistant' | 'technician'
   content: string
+  mediaUrl?: string | null
+  mediaType?: 'image' | 'video' | null
 }
 
 interface CustomerInfo {
@@ -37,8 +39,10 @@ export default function ChatInterface() {
   const [directChatActive, setDirectChatActive] = useState(false)
   const [directChatToken, setDirectChatToken] = useState<string | null>(null)
   const [streamingText, setStreamingText] = useState('')
+  const [uploading, setUploading] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const supabase = createClient()
 
@@ -54,14 +58,19 @@ export default function ChatInterface() {
         const res = await fetch(`/api/direct-chat/${directChatToken}`)
         if (!res.ok) return
         const data = await res.json()
-        const techMsgs: { role: string; content: string | null; created_at: string }[] = (data.messages ?? [])
+        const techMsgs: { role: string; content: string | null; media_url: string | null; media_type: string | null }[] = (data.messages ?? [])
           .filter((m: { role: string }) => m.role === 'technician')
         if (techMsgs.length > 0) {
           setMessages(prev => {
-            const existing = new Set(prev.map(m => m.role + '|' + m.content))
+            const existing = new Set(prev.map(m => m.role + '|' + (m.content || m.mediaUrl || '')))
             const fresh = techMsgs
-              .filter(m => m.content && !existing.has('technician|' + m.content))
-              .map(m => ({ role: 'technician' as const, content: m.content! }))
+              .filter(m => (m.content || m.media_url) && !existing.has('technician|' + (m.content || m.media_url || '')))
+              .map(m => ({
+                role: 'technician' as const,
+                content: m.content ?? '',
+                mediaUrl: m.media_url,
+                mediaType: (m.media_type as 'image' | 'video' | null) ?? null,
+              }))
             return fresh.length > 0 ? [...prev, ...fresh] : prev
           })
         }
@@ -89,6 +98,32 @@ export default function ChatInterface() {
         }])
       }
     } catch { /* ignore */ }
+  }
+
+  async function sendMedia(file: File) {
+    if (!file || uploading || !directChatToken) return
+    setUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch(`/api/direct-chat/${directChatToken}/upload`, { method: 'POST', body: fd })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        alert(`Invio non riuscito: ${d.error ?? res.status}`)
+        setUploading(false)
+        return
+      }
+      const { url, mediaType } = await res.json()
+      if (ticketId) {
+        await supabase.from('ticket_messages').insert({
+          ticket_id: ticketId, role: 'user', content: null, media_url: url, media_type: mediaType,
+        })
+      }
+      setMessages(prev => [...prev, { role: 'user', content: '', mediaUrl: url, mediaType }])
+    } catch {
+      alert('Invio non riuscito. Riprova.')
+    }
+    setUploading(false)
   }
 
   async function startChat(e: React.FormEvent) {
@@ -331,7 +366,7 @@ export default function ChatInterface() {
       {/* Messages */}
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: 12 }}>
         {messages.map((msg, i) => (
-          <Bubble key={i} role={msg.role} content={msg.content} />
+          <Bubble key={i} role={msg.role} content={msg.content} mediaUrl={msg.mediaUrl} mediaType={msg.mediaType} />
         ))}
 
         {streamingText && <Bubble role="assistant" content={streamingText} streaming />}
@@ -380,6 +415,37 @@ export default function ChatInterface() {
           borderTop: '1px solid var(--border)',
           display: 'flex', alignItems: 'flex-end', gap: 8,
         }}>
+          {directChatActive && (
+            <>
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+                title="Invia foto o video"
+                style={{
+                  width: 42, height: 42, borderRadius: '50%', border: 'none', flexShrink: 0,
+                  background: 'var(--surface-3)', cursor: uploading ? 'default' : 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                {uploading ? (
+                  <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>...</span>
+                ) : (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/>
+                    <polyline points="21 15 16 10 5 21"/>
+                  </svg>
+                )}
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*,video/*"
+                style={{ display: 'none' }}
+                onChange={e => { const f = e.target.files?.[0]; if (f) sendMedia(f); e.target.value = '' }}
+              />
+            </>
+          )}
           <textarea
             ref={inputRef}
             value={input}
@@ -453,7 +519,25 @@ function Avatar() {
   )
 }
 
-function Bubble({ role, content, streaming }: { role: string; content: string; streaming?: boolean }) {
+function Media({ url, type }: { url: string; type: 'image' | 'video' | null | undefined }) {
+  return (
+    <div style={{ borderRadius: 12, overflow: 'hidden' }}>
+      {type === 'video' ? (
+        <video controls playsInline style={{ maxWidth: '100%', maxHeight: 260, display: 'block' }}>
+          <source src={url} />
+        </video>
+      ) : (
+        <a href={url} target="_blank" rel="noreferrer">
+          <img src={url} alt="" style={{ maxWidth: '100%', maxHeight: 260, display: 'block' }} />
+        </a>
+      )}
+    </div>
+  )
+}
+
+function Bubble({ role, content, mediaUrl, mediaType, streaming }: {
+  role: string; content: string; mediaUrl?: string | null; mediaType?: 'image' | 'video' | null; streaming?: boolean
+}) {
   const isUser = role === 'user'
   const isTech = role === 'technician'
 
@@ -467,13 +551,15 @@ function Bubble({ role, content, streaming }: { role: string; content: string; s
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <div
           style={{
-            maxWidth: '80%', padding: '10px 14px',
+            maxWidth: '80%', padding: mediaUrl ? 6 : '10px 14px',
             borderRadius: 18, borderBottomRightRadius: 4,
             background: 'var(--accent)', color: 'white',
             fontSize: 15, lineHeight: 1.5,
           }}
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
+        >
+          {mediaUrl && <Media url={mediaUrl} type={mediaType} />}
+          {content && <div style={{ padding: mediaUrl ? '6px 8px 2px' : 0 }} dangerouslySetInnerHTML={{ __html: html }} />}
+        </div>
       </div>
     )
   }
@@ -494,14 +580,16 @@ function Bubble({ role, content, streaming }: { role: string; content: string; s
           <p style={{ fontSize: 10, color: 'var(--text-tertiary)', marginBottom: 3, paddingLeft: 2 }}>Tecnico</p>
           <div
             style={{
-              maxWidth: '80%', padding: '10px 14px',
+              maxWidth: '80%', padding: mediaUrl ? 6 : '10px 14px',
               borderRadius: 18, borderBottomLeftRadius: 4,
               background: 'rgba(52,199,89,0.1)', color: 'var(--text-primary)',
               fontSize: 15, lineHeight: 1.5,
               border: '1px solid rgba(52,199,89,0.2)',
             }}
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
+          >
+            {mediaUrl && <Media url={mediaUrl} type={mediaType} />}
+            {content && <div style={{ padding: mediaUrl ? '6px 8px 2px' : 0 }} dangerouslySetInnerHTML={{ __html: html }} />}
+          </div>
         </div>
       </div>
     )
