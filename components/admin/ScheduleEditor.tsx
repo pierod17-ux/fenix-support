@@ -119,7 +119,7 @@ export default function ScheduleEditor({
       }
       setTechnicians(prev => [...prev, newTech])
       if (d.emailError) {
-        setFormSuccess('Tecnico aggiunto. Email automatica non disponibile — usa il link qui sotto.')
+        setFormSuccess(`Tecnico aggiunto. Errore email: ${d.emailError}`)
         setInviteLink(d.inviteLink ?? null)
       } else {
         setFormSuccess('Tecnico aggiunto! Email di invito inviata.')
