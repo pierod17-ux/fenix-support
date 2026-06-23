@@ -9,7 +9,8 @@ function chunkText(text: string): string[] {
   while (start < text.length) {
     const end = Math.min(start + 800, text.length)
     chunks.push(text.slice(start, end).trim())
-    start = end - 100
+    if (end >= text.length) break
+    start += 700
   }
   return chunks.filter(c => c.length > 50)
 }
