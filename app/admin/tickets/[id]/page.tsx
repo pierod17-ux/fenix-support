@@ -21,6 +21,12 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
   const { id } = await params
   const supabase = await createClient()
 
+  const { data: { user } } = await supabase.auth.getUser()
+  const { data: me } = user
+    ? await supabase.from('technician_profiles').select('role').eq('id', user.id).single()
+    : { data: null }
+  const isAdmin = me?.role === 'admin'
+
   const { data: ticket } = await supabase
     .from('support_tickets')
     .select('*, assignee:assigned_to(display_name, email, whatsapp)')
@@ -75,7 +81,7 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
               Aperto il {format(new Date(ticket.created_at), "dd MMMM yyyy 'alle' HH:mm", { locale: it })}
             </p>
           </div>
-          <TicketActions ticketId={id} currentStatus={ticket.status} />
+          <TicketActions ticketId={id} currentStatus={ticket.status} isAdmin={isAdmin} />
         </div>
       </div>
 

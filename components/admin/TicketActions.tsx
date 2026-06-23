@@ -14,7 +14,7 @@ const transitions: Record<string, { label: string; next: string }[]> = {
   closed: [{ label: 'Riapri', next: 'open' }],
 }
 
-export default function TicketActions({ ticketId, currentStatus }: { ticketId: string; currentStatus: string }) {
+export default function TicketActions({ ticketId, currentStatus, isAdmin = false }: { ticketId: string; currentStatus: string; isAdmin?: boolean }) {
   const [loading, setLoading] = useState(false)
   const router = useRouter()
   const supabase = createClient()
@@ -32,6 +32,19 @@ export default function TicketActions({ ticketId, currentStatus }: { ticketId: s
     setLoading(false)
   }
 
+  async function deleteTicket() {
+    if (!confirm('Eliminare definitivamente questo ticket e tutta la conversazione? L\'operazione non è reversibile.')) return
+    setLoading(true)
+    const res = await fetch(`/api/tickets/${ticketId}`, { method: 'DELETE' })
+    if (res.ok) {
+      router.push('/admin')
+    } else {
+      const d = await res.json().catch(() => ({}))
+      alert(`Errore: ${d.error ?? 'impossibile eliminare'}`)
+      setLoading(false)
+    }
+  }
+
   const actions = transitions[currentStatus] ?? []
 
   return (
@@ -47,6 +60,13 @@ export default function TicketActions({ ticketId, currentStatus }: { ticketId: s
           {loading ? '...' : action.label}
         </button>
       ))}
+      {isAdmin && (
+        <button onClick={deleteTicket} disabled={loading}
+          className="px-3 py-2 rounded-xl text-xs font-medium transition-all hover:opacity-90"
+          style={{ background: 'rgba(255,59,48,0.10)', color: 'var(--danger)' }}>
+          Elimina
+        </button>
+      )}
     </div>
   )
 }
