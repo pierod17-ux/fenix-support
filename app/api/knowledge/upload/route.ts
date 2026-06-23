@@ -1,5 +1,6 @@
-import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
 import { NextRequest } from 'next/server'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export const maxDuration = 30
 
@@ -15,20 +16,28 @@ function chunkText(text: string): string[] {
   return chunks.filter(c => c.length > 50)
 }
 
-async function insertChunks(docId: string, title: string, chunks: string[]) {
-  const svc = await createServiceClient()
+async function insertChunks(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any>,
+  docId: string,
+  title: string,
+  chunks: string[]
+) {
   const rows = chunks.map((content, i) => ({
     document_id: docId,
     title: `${title} (parte ${i + 1})`,
     content,
   }))
   for (let i = 0; i < rows.length; i += 50) {
-    const { error } = await svc.from('knowledge_chunks').insert(rows.slice(i, i + 50))
+    const { error } = await supabase.from('knowledge_chunks').insert(rows.slice(i, i + 50))
     if (error) throw new Error(`Chunk insert: ${error.message}`)
   }
-  await svc.from('knowledge_documents')
+  const { error: updErr } = await supabase
+    .from('knowledge_documents')
     .update({ status: 'ready', chunk_count: rows.length })
     .eq('id', docId)
+  if (updErr) throw new Error(`Status update: ${updErr.message}`)
+  console.log('[KB-UPLOAD] insertChunks done, chunks:', rows.length)
 }
 
 export async function POST(req: NextRequest) {
@@ -69,9 +78,8 @@ export async function POST(req: NextRequest) {
   let text: string
   try {
     if (fileType === 'txt') {
-      console.log('[KB-UPLOAD] TXT decode start')
       text = new TextDecoder('utf-8').decode(fileBuffer)
-      console.log('[KB-UPLOAD] TXT text length:', text.length)
+      console.log('[KB-UPLOAD] TXT length:', text.length)
     } else {
       console.log('[KB-UPLOAD] PDF parse start, bytes:', fileBuffer.byteLength)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -81,17 +89,16 @@ export async function POST(req: NextRequest) {
       console.log('[KB-UPLOAD] PDF text length:', text.length)
     }
   } catch (e) {
-    console.log('[KB-UPLOAD] text extraction error:', String(e))
+    console.log('[KB-UPLOAD] extraction error:', String(e))
     return Response.json({ error: `Estrazione testo fallita: ${String(e).slice(0, 200)}` }, { status: 500 })
   }
 
   if (!text.trim()) {
-    console.log('[KB-UPLOAD] empty text extracted')
     return Response.json({ error: 'Nessun testo estratto dal documento' }, { status: 400 })
   }
 
   const chunks = chunkText(text)
-  console.log('[KB-UPLOAD] chunks:', chunks.length, 'fileType:', fileType)
+  console.log('[KB-UPLOAD] chunks:', chunks.length)
 
   const { data: doc, error: docErr } = await supabase
     .from('knowledge_documents')
@@ -114,8 +121,7 @@ export async function POST(req: NextRequest) {
   console.log('[KB-UPLOAD] doc inserted:', doc.id)
 
   try {
-    await insertChunks(doc.id, title, chunks)
-    console.log('[KB-UPLOAD] done, chunks:', chunks.length)
+    await insertChunks(supabase, doc.id, title, chunks)
     return Response.json({ id: doc.id, status: 'ready', chunks: chunks.length })
   } catch (e) {
     console.log('[KB-UPLOAD] insertChunks error:', String(e))
