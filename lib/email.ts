@@ -98,6 +98,57 @@ export async function sendPasswordResetEmail(params: {
   return result
 }
 
+export async function sendOnCallEmail(params: {
+  to: string
+  name: string
+  startTime: string
+  endTime: string
+  isReminder: boolean
+  portalUrl: string
+}) {
+  const { to, name, startTime, endTime, isReminder, portalUrl } = params
+  const title = isReminder ? 'Tra 10 minuti inizia la tua reperibilità' : 'È iniziata la tua reperibilità'
+  const intro = isReminder
+    ? `Tra <strong>10 minuti</strong> (alle ${startTime}) inizia il tuo turno di reperibilità.`
+    : `Il tuo turno di reperibilità è <strong>iniziato ora</strong> (${startTime} – ${endTime}).`
+  const html = `
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="font-family:-apple-system,sans-serif;background:#f5f5f7;margin:0;padding:20px;">
+  <div style="max-width:560px;margin:0 auto;background:white;border-radius:18px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+    <div style="background:linear-gradient(135deg,${isReminder ? '#ff9500 0%,#ffb340' : '#0071e3 0%,#00a2ff'} 100%);padding:28px 32px;">
+      <p style="color:white;font-weight:700;font-size:20px;margin:0;">${isReminder ? '⏰' : '🟢'} ${title}</p>
+      <p style="color:rgba(255,255,255,0.8);font-size:13px;margin:4px 0 0;">Portale Tecnici Fenix</p>
+    </div>
+    <div style="padding:32px;">
+      <p style="color:#1d1d1f;font-size:15px;margin-bottom:8px;">Ciao <strong>${name}</strong>,</p>
+      <p style="color:#515154;font-size:14px;line-height:1.6;margin-bottom:24px;">
+        ${intro}<br>
+        Collegati al portale per essere raggiungibile dai clienti e ricevere le richieste di assistenza.
+      </p>
+      <a href="${portalUrl}/login" style="display:inline-block;background:#0071e3;color:white;padding:14px 28px;border-radius:12px;text-decoration:none;font-weight:600;font-size:15px;box-shadow:0 4px 12px rgba(0,113,227,0.3);">
+        Collegati al portale →
+      </a>
+      <p style="color:#aeaeb2;font-size:12px;margin-top:24px;">
+        Turno: ${startTime} – ${endTime}. Resterai collegato finché non effettui il logout.
+      </p>
+    </div>
+    <div style="padding:16px 32px;border-top:1px solid #f2f2f2;">
+      <p style="color:#aeaeb2;font-size:11px;margin:0;">Sistema Assistenza Tecnica Fenix · Notifica automatica</p>
+    </div>
+  </div>
+</body></html>`
+
+  const result = await getResend().emails.send({
+    from: FROM,
+    to,
+    subject: isReminder ? 'Promemoria: reperibilità tra 10 minuti' : 'La tua reperibilità è iniziata',
+    html,
+  })
+  if (result.error) throw new Error(`Resend: ${result.error.message}`)
+  return result
+}
+
 export async function sendDirectChatEmail(params: {
   to: string
   technicianName: string
