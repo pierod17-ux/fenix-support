@@ -145,6 +145,17 @@ export default function ScheduleEditor({
     alert(`Email di reset password inviata a ${t.email}`)
   }
 
+  async function deleteTechnician(t: Technician) {
+    if (!confirm(`Eliminare definitivamente ${t.display_name}? L'operazione non è reversibile.`)) return
+    const res = await fetch(`/api/technicians/${t.id}`, { method: 'DELETE' })
+    if (res.ok) {
+      setTechnicians(prev => prev.filter(x => x.id !== t.id))
+    } else {
+      const d = await res.json()
+      alert(`Errore: ${d.error}`)
+    }
+  }
+
   // ─── Shifts ───
   async function addShift(e: React.FormEvent, day: number) {
     e.preventDefault()
@@ -305,6 +316,7 @@ export default function ScheduleEditor({
                         danger={!isDisabled}
                         success={isDisabled}
                       />
+                      <ActionBtn onClick={() => deleteTechnician(t)} label="Elimina" danger />
                     </div>
                   </div>
                 )

@@ -44,3 +44,23 @@ export async function PATCH(
 
   return Response.json({ ok: true })
 }
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const supabase = await getAdminClient()
+  if (!supabase) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { id } = await params
+
+  const { error: profileErr } = await supabase
+    .from('technician_profiles')
+    .delete()
+    .eq('id', id)
+  if (profileErr) return Response.json({ error: profileErr.message }, { status: 500 })
+
+  await supabase.auth.admin.deleteUser(id)
+
+  return Response.json({ ok: true })
+}

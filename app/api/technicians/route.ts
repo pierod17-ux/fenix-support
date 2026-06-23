@@ -39,7 +39,9 @@ export async function POST(req: NextRequest) {
   if (linkError) return Response.json({ error: linkError.message }, { status: 500 })
 
   const userId = linkData.user.id
-  const inviteLink = linkData.properties?.action_link ?? null
+  const rawLink = linkData.properties?.action_link ?? null
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://fenix-support.netlify.app'
+  const inviteLink = rawLink ? rawLink.replace(/^https?:\/\/localhost:\d+/, siteUrl) : null
 
   // Create technician profile
   const { error: profileError } = await supabase
