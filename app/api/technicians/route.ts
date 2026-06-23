@@ -30,17 +30,21 @@ export async function POST(req: NextRequest) {
   const { display_name, email, phone, whatsapp } = await req.json()
   if (!email || !display_name) return Response.json({ error: 'Nome ed email obbligatori' }, { status: 400 })
 
+  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://fenix-support.netlify.app').replace(/\/$/, '')
+
   // Create auth user and get invite link without sending Supabase's email
   const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
     type: 'invite',
     email,
-    options: { data: { display_name, role: 'technician' } },
+    options: {
+      data: { display_name, role: 'technician' },
+      redirectTo: `${siteUrl}/auth/set-password`,
+    },
   })
   if (linkError) return Response.json({ error: linkError.message }, { status: 500 })
 
   const userId = linkData.user.id
   const rawLink = linkData.properties?.action_link ?? null
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://fenix-support.netlify.app').replace(/\/$/, '')
   let inviteLink: string | null = null
   if (rawLink) {
     const url = new URL(rawLink)

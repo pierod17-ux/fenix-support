@@ -29,9 +29,11 @@ export async function POST(
 
   if (!tech?.email) return Response.json({ error: 'Technician not found' }, { status: 404 })
 
+  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://fenix-support.netlify.app').replace(/\/$/, '')
   const { data: linkData, error } = await supabase.auth.admin.generateLink({
     type: 'recovery',
     email: tech.email,
+    options: { redirectTo: `${siteUrl}/auth/set-password` },
   })
   if (error) return Response.json({ error: error.message }, { status: 500 })
 
