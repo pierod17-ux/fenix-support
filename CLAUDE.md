@@ -82,14 +82,26 @@ lib/
 | `ai_config` | Config AI key/value: system_contexts, behavior_rules, cost_limit_usd |
 | `ai_usage_log` | Log token e costi |
 | `knowledge_chunks` | Documenti indicizzati per RAG |
+| `on_call_notifications` | Dedup invii mail reperibilità (schedule_id, kind, for_date) |
 
 ## Features completate
-- ✅ Chat AI streaming con escalation tool
-- ✅ Sistema reperibilità: tecnici (inviti, disable, reset pwd) + turni settimanali
+- ✅ Chat AI streaming con escalation tool — IA "**Aura**", multilingua (rileva lingua utente)
+- ✅ Modelli macchina: Evolution, Essenza, Sensor Smart, Sensor Therapy
+- ✅ Sistema reperibilità: tecnici (inviti, disable, reset pwd, **elimina**) + turni settimanali
+- ✅ Permessi turni: admin gestisce tutto; tecnico vede solo i propri (read-only)
+- ✅ Stato online tecnici (heartbeat → `last_seen`, pallino verde in reperibilità)
+- ✅ Mail reperibilità automatica (pg_cron → `/api/cron/on-call`, 10min prima + inizio turno)
+- ✅ Invito tecnico end-to-end: `/auth/set-password` (token da hash → setSession → password)
+- ✅ Sessione persistente: `middleware.ts` rinnova token ad ogni richiesta
+- ✅ Eliminazione ticket (admin-only, cascade)
 - ✅ Chat diretta tecnico↔cliente con media upload (bucket: `chat-media`)
-- ✅ Email branded: invito tecnico, reset password, notifica chat diretta
+- ✅ Email branded da `sensor-smart@damtec.net`: invito, reset pwd, chat diretta, reperibilità
 - ✅ Training AI: contesti multi-sezione, regole comportamento, monitoraggio costi
 - ✅ RAG su knowledge base (documenti + ticket risolti)
+
+## Automazioni infra
+- **pg_cron** job `on-call-check` (ogni minuto) → POST `/api/cron/on-call` con header `x-cron-secret` (env `CRON_SECRET`). Dedup in `on_call_notifications`. Ora in Europe/Rome.
+- **Env var su Netlify**: cambiarne una richiede un nuovo deploy per applicarla al runtime. NON marcare le var come "secret" (non vengono iniettate nel runtime Next.js).
 
 ## Env vars necessari (.env.local)
 Le chiavi sono nel file `.env.local` (ignorato da git, sincronizzato via OneDrive).
