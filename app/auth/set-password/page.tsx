@@ -11,28 +11,50 @@ export default function SetPasswordPage() {
   const [loading, setLoading] = useState(false)
   const [checking, setChecking] = useState(true)
   const [ready, setReady] = useState(false)
+  const [linkError, setLinkError] = useState('')
   const router = useRouter()
   const supabase = createClient()
 
-  // The invite/recovery link redirects here with session tokens in the URL hash.
-  // @supabase/ssr's browser client auto-detects them; we wait for the session.
+  // The invite/recovery link redirects here with session tokens (or an error)
+  // in the URL hash: #access_token=...&refresh_token=...  OR  #error=...&error_code=...
   useEffect(() => {
     let active = true
     async function check() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session) {
-        if (active) { setReady(true); setChecking(false) }
+      const hash = typeof window !== 'undefined' ? window.location.hash.replace(/^#/, '') : ''
+      const params = new URLSearchParams(hash)
+
+      const errCode = params.get('error_code')
+      const errDesc = params.get('error_description')
+      if (errCode) {
+        if (active) {
+          setLinkError(
+            errCode === 'otp_expired'
+              ? 'Il link è scaduto o è già stato aperto (a volte i filtri antispam lo "pre-aprono"). Chiedi un nuovo invito.'
+              : (errDesc ?? 'Link non valido').replace(/\+/g, ' ')
+          )
+          setChecking(false)
+        }
         return
       }
-      // Session may still be processing the URL hash — listen briefly.
-      const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
-        if (s && active) { setReady(true); setChecking(false) }
-      })
-      // Fallback timeout: if no session after 3s, link is invalid/expired.
-      setTimeout(() => {
-        if (active && !ready) { setChecking(false) }
-      }, 3000)
-      return () => sub.subscription.unsubscribe()
+
+      const access_token = params.get('access_token')
+      const refresh_token = params.get('refresh_token')
+      if (access_token && refresh_token) {
+        const { error } = await supabase.auth.setSession({ access_token, refresh_token })
+        if (active) {
+          if (error) { setLinkError(error.message); setChecking(false) }
+          else { setReady(true); setChecking(false) }
+        }
+        return
+      }
+
+      // No hash tokens — maybe @supabase/ssr already consumed the hash. Check session.
+      const { data: { session } } = await supabase.auth.getSession()
+      if (active) {
+        if (session) { setReady(true) }
+        else { setLinkError('Link non valido o scaduto. Chiedi un nuovo invito.') }
+        setChecking(false)
+      }
     }
     check()
     return () => { active = false }
@@ -98,7 +120,7 @@ export default function SetPasswordPage() {
               Link non valido o scaduto
             </p>
             <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 20 }}>
-              Chiedi all&apos;amministratore di inviarti un nuovo invito.
+              {linkError || 'Chiedi all’amministratore di inviarti un nuovo invito.'}
             </p>
             <a href="/login" style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: 600, fontSize: 14 }}>
               Vai al login
