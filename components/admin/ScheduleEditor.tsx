@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 
 const DAYS_FULL = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato']
 
@@ -21,6 +21,14 @@ interface Technician {
   whatsapp: string | null
   role: string
   account_status: string | null
+  last_seen?: string | null
+}
+
+// Online se l'ultimo heartbeat è entro 2 minuti. `now` viene da uno stato
+// client (null durante SSR) per evitare mismatch di hydration.
+function isOnline(lastSeen: string | null | undefined, now: number | null): boolean {
+  if (!lastSeen || now === null) return false
+  return now - new Date(lastSeen).getTime() < 2 * 60 * 1000
 }
 interface Schedule {
   id: string
@@ -40,13 +48,41 @@ interface TechForm {
 export default function ScheduleEditor({
   technicians: initTechs,
   schedules: initSchedules,
+  isAdmin = true,
+  currentUserId,
 }: {
   technicians: Technician[]
   schedules: Schedule[]
+  isAdmin?: boolean
+  currentUserId?: string
 }) {
   const [technicians, setTechnicians] = useState<Technician[]>(initTechs)
   const [schedules, setSchedules] = useState<Schedule[]>(initSchedules)
-  const [tab, setTab] = useState<'tecnici' | 'turni'>('tecnici')
+  const [tab, setTab] = useState<'tecnici' | 'turni'>(isAdmin ? 'tecnici' : 'turni')
+  const [now, setNow] = useState<number | null>(null)
+
+  // Tick ogni 30s per ricalcolare lo stato online (e niente mismatch SSR)
+  useEffect(() => {
+    setNow(Date.now())
+    const t = setInterval(() => setNow(Date.now()), 30_000)
+    return () => clearInterval(t)
+  }, [])
+
+  // Admin: aggiorna periodicamente last_seen dei tecnici (stato online live)
+  useEffect(() => {
+    if (!isAdmin) return
+    const refresh = async () => {
+      try {
+        const res = await fetch('/api/technicians')
+        if (!res.ok) return
+        const fresh: Technician[] = await res.json()
+        const seen = new Map(fresh.map(t => [t.id, t.last_seen]))
+        setTechnicians(prev => prev.map(t => seen.has(t.id) ? { ...t, last_seen: seen.get(t.id) ?? null } : t))
+      } catch { /* ignora */ }
+    }
+    const t = setInterval(refresh, 30_000)
+    return () => clearInterval(t)
+  }, [isAdmin])
 
   // ─── Technician modal state ───
   const [showModal, setShowModal] = useState(false)
@@ -184,7 +220,8 @@ export default function ScheduleEditor({
 
   return (
     <>
-      {/* Segmented control */}
+      {/* Segmented control — solo admin */}
+      {isAdmin && (
       <div style={{
         display: 'flex', gap: 4, padding: 4,
         background: 'var(--surface-2)', borderRadius: 14,
@@ -203,9 +240,10 @@ export default function ScheduleEditor({
           </button>
         ))}
       </div>
+      )}
 
       {/* ── Tab: Tecnici ── */}
-      {tab === 'tecnici' && (
+      {isAdmin && tab === 'tecnici' && (
         <div>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
             <div>
@@ -286,6 +324,16 @@ export default function ScheduleEditor({
                         }}>
                           {STATUS_LABEL[status] ?? status}
                         </span>
+                        {isOnline(t.last_seen, now) && (
+                          <span style={{
+                            fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 20,
+                            background: 'rgba(52,199,89,0.12)', color: '#34c759',
+                            display: 'flex', alignItems: 'center', gap: 4,
+                          }}>
+                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#34c759' }} />
+                            ONLINE
+                          </span>
+                        )}
                       </div>
                       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                         {t.email && (
@@ -372,6 +420,7 @@ export default function ScheduleEditor({
                         </span>
                       )}
                     </div>
+                    {isAdmin && (
                     <button
                       onClick={() => {
                         setAddingDay(isAdding ? null : day)
@@ -387,6 +436,7 @@ export default function ScheduleEditor({
                       }}>
                       {isAdding ? '×' : '+'}
                     </button>
+                    )}
                   </div>
 
                   {/* Shift chips */}
@@ -395,19 +445,30 @@ export default function ScheduleEditor({
                       {daySchedules.map(s => {
                         const tech = technicians.find(x => x.id === s.technician_id)
                         const init = (tech?.display_name ?? '?').charAt(0).toUpperCase()
+                        const online = isOnline(tech?.last_seen, now)
                         return (
                           <div key={s.id} style={{
                             display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px',
                             borderRadius: 10, background: 'rgba(0,113,227,0.06)',
                             border: '1px solid rgba(0,113,227,0.12)',
                           }}>
-                            <div style={{
-                              width: 28, height: 28, borderRadius: 8, flexShrink: 0,
-                              background: 'linear-gradient(135deg, #0071e3 0%, #00a2ff 100%)',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              fontSize: 11, fontWeight: 700, color: 'white',
-                            }}>
-                              {init}
+                            <div style={{ position: 'relative', flexShrink: 0 }}>
+                              <div style={{
+                                width: 28, height: 28, borderRadius: 8,
+                                background: 'linear-gradient(135deg, #0071e3 0%, #00a2ff 100%)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: 11, fontWeight: 700, color: 'white',
+                              }}>
+                                {init}
+                              </div>
+                              {isAdmin && (
+                                <span title={online ? 'Collegato' : 'Non collegato'} style={{
+                                  position: 'absolute', right: -2, bottom: -2,
+                                  width: 10, height: 10, borderRadius: '50%',
+                                  background: online ? '#34c759' : '#c7c7cc',
+                                  border: '2px solid var(--surface)',
+                                }} />
+                              )}
                             </div>
                             <div style={{ flex: 1 }}>
                               <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', margin: 0 }}>
@@ -415,14 +476,21 @@ export default function ScheduleEditor({
                               </p>
                               <p style={{ fontSize: 11, color: 'var(--text-secondary)', margin: 0 }}>
                                 {s.start_time} – {s.end_time}
+                                {isAdmin && (
+                                  <span style={{ color: online ? '#34c759' : 'var(--text-tertiary)', fontWeight: 500 }}>
+                                    {' · '}{online ? 'collegato' : 'non collegato'}
+                                  </span>
+                                )}
                               </p>
                             </div>
-                            <button onClick={() => removeShift(s.id)} style={{
-                              width: 24, height: 24, borderRadius: 6, border: 'none', cursor: 'pointer',
-                              background: 'rgba(255,59,48,0.10)', color: 'var(--danger)',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              fontSize: 14, flexShrink: 0,
-                            }}>×</button>
+                            {isAdmin && (
+                              <button onClick={() => removeShift(s.id)} style={{
+                                width: 24, height: 24, borderRadius: 6, border: 'none', cursor: 'pointer',
+                                background: 'rgba(255,59,48,0.10)', color: 'var(--danger)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: 14, flexShrink: 0,
+                              }}>×</button>
+                            )}
                           </div>
                         )
                       })}

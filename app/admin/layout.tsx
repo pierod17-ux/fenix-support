@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import AdminSidebar from '@/components/admin/AdminSidebar'
+import Heartbeat from '@/components/Heartbeat'
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -18,6 +19,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <div style={{ minHeight: '100dvh', background: 'var(--background)' }}>
+      <Heartbeat />
       <AdminSidebar
         role={profile?.role ?? 'technician'}
         displayName={displayName}

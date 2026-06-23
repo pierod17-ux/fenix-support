@@ -17,7 +17,7 @@ export async function GET() {
   const svc = await createServiceClient()
   const { data, error } = await svc
     .from('technician_profiles')
-    .select('id, display_name, email, phone, whatsapp, role, account_status, created_at')
+    .select('id, display_name, email, phone, whatsapp, role, account_status, created_at, last_seen')
     .order('display_name')
   if (error) return Response.json({ error: error.message }, { status: 500 })
   return Response.json(data)
