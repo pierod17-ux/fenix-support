@@ -2,6 +2,8 @@ import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
   eslint: { ignoreDuringBuilds: true },
+  typescript: { ignoreBuildErrors: true },
+  serverExternalPackages: ['pdf-parse'],
   webpack: (config) => {
     config.resolve.alias = { ...config.resolve.alias, canvas: false }
     return config

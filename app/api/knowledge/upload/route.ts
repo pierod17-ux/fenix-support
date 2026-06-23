@@ -69,22 +69,29 @@ export async function POST(req: NextRequest) {
   let text: string
   try {
     if (fileType === 'txt') {
+      console.log('[KB-UPLOAD] TXT decode start')
       text = new TextDecoder('utf-8').decode(fileBuffer)
+      console.log('[KB-UPLOAD] TXT text length:', text.length)
     } else {
-      // pdf-parse: dynamic import avoids webpack issues with test file paths
-      const pdfParse = (await import('pdf-parse/lib/pdf-parse.js')).default
+      console.log('[KB-UPLOAD] PDF parse start, bytes:', fileBuffer.byteLength)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pdfParse: (buf: Buffer) => Promise<{ text: string }> = (await import('pdf-parse')).default as any
       const data = await pdfParse(Buffer.from(fileBuffer))
       text = data.text
+      console.log('[KB-UPLOAD] PDF text length:', text.length)
     }
   } catch (e) {
+    console.log('[KB-UPLOAD] text extraction error:', String(e))
     return Response.json({ error: `Estrazione testo fallita: ${String(e).slice(0, 200)}` }, { status: 500 })
   }
 
   if (!text.trim()) {
+    console.log('[KB-UPLOAD] empty text extracted')
     return Response.json({ error: 'Nessun testo estratto dal documento' }, { status: 400 })
   }
 
   const chunks = chunkText(text)
+  console.log('[KB-UPLOAD] chunks:', chunks.length, 'fileType:', fileType)
 
   const { data: doc, error: docErr } = await supabase
     .from('knowledge_documents')
@@ -101,13 +108,17 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (docErr || !doc) {
+    console.log('[KB-UPLOAD] doc insert error:', docErr?.message)
     return Response.json({ error: `Errore DB: ${docErr?.message}` }, { status: 500 })
   }
+  console.log('[KB-UPLOAD] doc inserted:', doc.id)
 
   try {
     await insertChunks(doc.id, title, chunks)
+    console.log('[KB-UPLOAD] done, chunks:', chunks.length)
     return Response.json({ id: doc.id, status: 'ready', chunks: chunks.length })
   } catch (e) {
+    console.log('[KB-UPLOAD] insertChunks error:', String(e))
     await supabase.from('knowledge_documents')
       .update({ status: 'error', description: String(e).slice(0, 300) })
       .eq('id', doc.id)
