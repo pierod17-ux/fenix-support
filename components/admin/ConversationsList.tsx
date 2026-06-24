@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { format } from 'date-fns'
 import { it } from 'date-fns/locale'
@@ -16,9 +16,20 @@ const categoryLabel: Record<string, string> = {
 export default function ConversationsList({ initial }: { initial: Conversation[] }) {
   const [items, setItems] = useState<Conversation[]>(initial)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [query, setQuery] = useState('')
   const [deleting, setDeleting] = useState(false)
 
-  const allSelected = items.length > 0 && selected.size === items.length
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return items
+    return items.filter(c =>
+      [c.customer_name, c.center_name, c.machine_model, c.subject,
+        categoryLabel[c.problem_category ?? ''] ?? c.problem_category]
+        .filter(Boolean).join(' ').toLowerCase().includes(q)
+    )
+  }, [items, query])
+
+  const allSelected = filtered.length > 0 && filtered.every(i => selected.has(i.id))
 
   function toggle(id: string) {
     setSelected(prev => {
@@ -29,7 +40,7 @@ export default function ConversationsList({ initial }: { initial: Conversation[]
   }
 
   function toggleAll() {
-    setSelected(allSelected ? new Set() : new Set(items.map(i => i.id)))
+    setSelected(allSelected ? new Set() : new Set(filtered.map(i => i.id)))
   }
 
   async function deleteIds(ids: string[]) {
@@ -79,15 +90,25 @@ export default function ConversationsList({ initial }: { initial: Conversation[]
       </div>
 
       <div style={{ padding: '0 24px' }}>
+        {/* Search */}
+        <input
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Cerca per cliente, centro, macchina, oggetto…"
+          style={{
+            width: '100%', padding: '9px 14px', borderRadius: 12, fontSize: 13, marginBottom: 12,
+            background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-primary)',
+          }}
+        />
         {/* Toolbar */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           marginBottom: 12, minHeight: 36,
         }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13, color: 'var(--text-secondary)' }}>
-            <input type="checkbox" checked={allSelected} onChange={toggleAll} disabled={items.length === 0}
+            <input type="checkbox" checked={allSelected} onChange={toggleAll} disabled={filtered.length === 0}
               style={{ width: 17, height: 17, accentColor: 'var(--accent)', cursor: 'pointer' }} />
-            {selected.size > 0 ? `${selected.size} selezionate` : `${items.length} conversazioni`}
+            {selected.size > 0 ? `${selected.size} selezionate` : `${filtered.length} conversazioni`}
           </label>
 
           {selected.size > 0 && (
@@ -105,16 +126,16 @@ export default function ConversationsList({ initial }: { initial: Conversation[]
 
         {/* List */}
         <div style={{ background: 'var(--surface)', borderRadius: 18, boxShadow: 'var(--shadow-md)', overflow: 'hidden' }}>
-          {items.length === 0 ? (
+          {filtered.length === 0 ? (
             <div style={{ padding: '60px 20px', textAlign: 'center' }}>
               <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
-                Nessuna conversazione
+                {query ? 'Nessun risultato' : 'Nessuna conversazione'}
               </p>
               <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                Le chat dei clienti appariranno qui
+                {query ? 'Prova con un altro termine di ricerca' : 'Le chat dei clienti appariranno qui'}
               </p>
             </div>
-          ) : items.map((c, i) => {
+          ) : filtered.map((c, i) => {
             const isSel = selected.has(c.id)
             const escalated = !!c.escalated_at
             return (
