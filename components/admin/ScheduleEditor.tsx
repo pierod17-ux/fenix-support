@@ -113,7 +113,7 @@ export default function ScheduleEditor({
 
   // ─── Shift state ───
   const [addingDay, setAddingDay] = useState<number | null>(null)
-  const [shiftForm, setShiftForm] = useState({ technician_id: '', start_time: '09:00', end_time: '18:00' })
+  const [shiftForm, setShiftForm] = useState({ technician_ids: [] as string[], start_time: '09:00', end_time: '18:00' })
   const [shiftLoading, setShiftLoading] = useState(false)
 
   // ─── Technician CRUD ───
@@ -213,16 +213,21 @@ export default function ScheduleEditor({
   // ─── Shifts ───
   async function addShift(e: React.FormEvent, day: number) {
     e.preventDefault()
-    if (!shiftForm.technician_id) return
+    if (shiftForm.technician_ids.length === 0) return
     setShiftLoading(true)
     const res = await fetch('/api/schedule', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...shiftForm, day_of_week: day }),
+      body: JSON.stringify({
+        technician_ids: shiftForm.technician_ids,
+        start_time: shiftForm.start_time,
+        end_time: shiftForm.end_time,
+        day_of_week: day,
+      }),
     })
     if (res.ok) {
-      const s = await res.json()
-      setSchedules(prev => [...prev, s])
+      const created: Schedule[] = await res.json()
+      setSchedules(prev => [...prev, ...created])
       setAddingDay(null)
     } else {
       const d = await res.json().catch(() => ({}))
@@ -445,7 +450,7 @@ export default function ScheduleEditor({
                     <button
                       onClick={() => {
                         setAddingDay(isAdding ? null : day)
-                        setShiftForm({ technician_id: '', start_time: '09:00', end_time: '18:00' })
+                        setShiftForm({ technician_ids: [], start_time: '09:00', end_time: '18:00' })
                       }}
                       style={{
                         width: 30, height: 30, borderRadius: 9, border: 'none', cursor: 'pointer',
@@ -525,22 +530,38 @@ export default function ScheduleEditor({
                       borderTop: daySchedules.length > 0 ? '1px solid var(--border)' : 'none',
                       background: 'var(--surface-2)',
                     }}>
-                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
-                        <div style={{ flex: '1 1 160px' }}>
-                          <label style={{ fontSize: 11, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Tecnico</label>
-                          <select required value={shiftForm.technician_id}
-                            onChange={e => setShiftForm(p => ({ ...p, technician_id: e.target.value }))}
-                            style={{
-                              width: '100%', padding: '8px 10px', borderRadius: 9, fontSize: 13,
-                              background: 'var(--surface)', border: '1px solid var(--border)',
-                              color: 'var(--text-primary)',
-                            }}>
-                            <option value="">Seleziona...</option>
-                            {activeTechs.map(t => (
-                              <option key={t.id} value={t.id}>{t.display_name}</option>
-                            ))}
-                          </select>
+                      <div style={{ marginBottom: 10 }}>
+                        <label style={{ fontSize: 11, color: 'var(--text-tertiary)', display: 'block', marginBottom: 6 }}>
+                          Tecnici di turno {shiftForm.technician_ids.length > 0 && `(${shiftForm.technician_ids.length})`}
+                        </label>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                          {activeTechs.map(t => {
+                            const checked = shiftForm.technician_ids.includes(t.id)
+                            return (
+                              <button key={t.id} type="button"
+                                onClick={() => setShiftForm(p => ({
+                                  ...p,
+                                  technician_ids: checked
+                                    ? p.technician_ids.filter(id => id !== t.id)
+                                    : [...p.technician_ids, t.id],
+                                }))}
+                                style={{
+                                  display: 'flex', alignItems: 'center', gap: 6,
+                                  padding: '7px 12px', borderRadius: 20, cursor: 'pointer',
+                                  fontSize: 13, fontWeight: checked ? 600 : 400,
+                                  background: checked ? 'var(--accent)' : 'var(--surface)',
+                                  color: checked ? 'white' : 'var(--text-secondary)',
+                                  border: `1px solid ${checked ? 'var(--accent)' : 'var(--border)'}`,
+                                  transition: 'all 0.15s',
+                                }}>
+                                {checked && <span style={{ fontSize: 12, lineHeight: 1 }}>✓</span>}
+                                {t.display_name}
+                              </button>
+                            )
+                          })}
                         </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
                         <div style={{ flex: '0 1 100px' }}>
                           <label style={{ fontSize: 11, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Dalle</label>
                           <input type="time" value={shiftForm.start_time}
@@ -563,9 +584,11 @@ export default function ScheduleEditor({
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: 8 }}>
-                        <button type="submit" disabled={shiftLoading} style={{
-                          padding: '8px 18px', borderRadius: 9, border: 'none', cursor: 'pointer',
+                        <button type="submit" disabled={shiftLoading || shiftForm.technician_ids.length === 0} style={{
+                          padding: '8px 18px', borderRadius: 9, border: 'none',
+                          cursor: shiftForm.technician_ids.length === 0 ? 'not-allowed' : 'pointer',
                           background: 'var(--accent)', color: 'white', fontSize: 13, fontWeight: 600,
+                          opacity: shiftForm.technician_ids.length === 0 ? 0.5 : 1,
                         }}>
                           {shiftLoading ? '...' : 'Salva turno'}
                         </button>

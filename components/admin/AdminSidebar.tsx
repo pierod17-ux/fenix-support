@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 
 const nav = [
   { href: '/admin', label: 'Ticket', icon: IconTicket },
+  { href: '/admin/conversations', label: 'Conversazioni', icon: IconChat },
   { href: '/admin/knowledge', label: 'Knowledge Base', icon: IconBook },
   { href: '/admin/training', label: 'Training AI', icon: IconBrain },
   { href: '/admin/schedule', label: 'Reperibilità', icon: IconClock },
@@ -149,7 +150,7 @@ export default function AdminSidebar({ role, displayName }: { role: string; disp
       }}
         className="mobile-tab-bar"
       >
-        {nav.slice(0, 4).map(item => {
+        {nav.slice(0, 5).map(item => {
           const active = pathname === item.href || (item.href !== '/admin' && pathname.startsWith(item.href))
           return (
             <Link key={item.href} href={item.href} style={{
@@ -186,6 +187,9 @@ export default function AdminSidebar({ role, displayName }: { role: string; disp
 
 function IconTicket() {
   return <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="16" height="12" rx="2.5"/><path d="M6 5V4a2 2 0 014 0v1M2 10h4M6 10v4"/></svg>
+}
+function IconChat() {
+  return <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M3 4h14a1 1 0 011 1v8a1 1 0 01-1 1H8l-4 3v-3H3a1 1 0 01-1-1V5a1 1 0 011-1z"/><path d="M6 8h8M6 11h5"/></svg>
 }
 function IconBook() {
   return <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 2h9a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V4a2 2 0 012-2z"/><path d="M7 7h6M7 10h6M7 13h4"/></svg>

@@ -4,7 +4,7 @@ import { sendEscalationEmail } from '@/lib/email'
 import { NextRequest } from 'next/server'
 
 export async function POST(req: NextRequest) {
-  const { ticketId, customerInfo, subject, aiSummary, priority } = await req.json()
+  const { ticketId, customerInfo, subject, aiSummary, priority, category } = await req.json()
 
   const supabase = await createServiceClient()
 
@@ -16,6 +16,7 @@ export async function POST(req: NextRequest) {
       priority,
       subject,
       ai_summary: aiSummary,
+      problem_category: category ?? null,
       escalated_at: new Date().toISOString(),
     })
     .eq('id', ticketId)
@@ -31,6 +32,7 @@ export async function POST(req: NextRequest) {
         priority,
         subject,
         ai_summary: aiSummary,
+        problem_category: category ?? null,
         escalated_at: new Date().toISOString(),
         customer_name: customerInfo?.name ?? 'Cliente',
         customer_email: customerInfo?.email ?? null,
@@ -70,74 +72,75 @@ async function notifyOnCallTechnician(
     center_name: string | null
   }
 ) {
-  // Trova il tecnico di turno per l'orario attuale
+  type Tech = { id: string; display_name: string | null; whatsapp: string | null; email: string | null }
+
+  // Trova TUTTI i tecnici di turno per l'orario attuale (un turno può avere più tecnici)
   const now = new Date()
   const dayOfWeek = now.getDay()
   const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
 
-  const { data: schedule } = await supabase
+  const { data: schedules } = await supabase
     .from('technician_schedules')
-    .select('*, technician:technician_id(id, display_name, whatsapp, email)')
+    .select('technician:technician_id(id, display_name, whatsapp, email)')
     .eq('day_of_week', dayOfWeek)
     .eq('is_active', true)
     .lte('start_time', currentTime)
     .gte('end_time', currentTime)
-    .limit(1)
-    .single()
 
-  // Se non c'è turno attivo, prendi il primo tecnico disponibile
-  const { data: fallbackTech } = !schedule
-    ? await supabase
-        .from('technician_profiles')
-        .select('id, display_name, whatsapp, email')
-        .eq('role', 'technician')
-        .limit(1)
-        .single()
-    : { data: null }
+  let techs: Tech[] = (schedules ?? [])
+    .map(s => (Array.isArray(s.technician) ? s.technician[0] : s.technician) as Tech | null)
+    .filter((t): t is Tech => !!t)
 
-  const tech = (schedule?.technician as { id: string; display_name: string | null; whatsapp: string | null; email: string | null } | null) ?? fallbackTech
-  if (!tech) return
+  // Se nessun tecnico è di turno, fallback: notifica tutti i tecnici attivi
+  if (techs.length === 0) {
+    const { data: fallback } = await supabase
+      .from('technician_profiles')
+      .select('id, display_name, whatsapp, email')
+      .eq('role', 'technician')
+      .neq('account_status', 'disabled')
+    techs = (fallback ?? []) as Tech[]
+  }
 
-  // Assegna il tecnico al ticket
-  await supabase
-    .from('support_tickets')
-    .update({ assigned_to: tech.id })
-    .eq('id', ticket.id)
+  // Dedup per id (un tecnico può comparire in più righe di turno)
+  techs = Array.from(new Map(techs.map(t => [t.id, t])).values())
+  if (techs.length === 0) return
 
+  // Nessuna assegnazione automatica: il ticket resta non assegnato finché un
+  // tecnico non lo prende in carico. Vengono notificati tutti i reperibili.
   const portalUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://assistenza.fenixsrl.it'
   const machineName = [ticket.machine_model, ticket.machine_serial].filter(Boolean).join(' — ') || 'N/D'
 
-  const notifyParams = {
-    technicianName: tech.display_name ?? 'Tecnico',
-    ticketId: ticket.id,
-    customerName: ticket.customer_name,
-    machineName,
-    subject: ticket.subject,
-    priority: ticket.priority,
-    portalUrl,
-  }
-
-  // WhatsApp
-  if (tech.whatsapp) {
-    try {
-      await sendEscalationNotification({ to: tech.whatsapp, ...notifyParams })
-    } catch (err) {
-      console.error('WhatsApp notification failed:', err)
+  await Promise.all(techs.map(async tech => {
+    const notifyParams = {
+      technicianName: tech.display_name ?? 'Tecnico',
+      ticketId: ticket.id,
+      customerName: ticket.customer_name,
+      machineName,
+      subject: ticket.subject,
+      priority: ticket.priority,
+      portalUrl,
     }
-  }
 
-  // Email
-  if (tech.email) {
-    try {
-      await sendEscalationEmail({
-        to: tech.email,
-        customerEmail: ticket.customer_email,
-        customerPhone: ticket.customer_phone,
-        aiSummary: ticket.ai_summary ?? '',
-        ...notifyParams,
-      })
-    } catch (err) {
-      console.error('Email notification failed:', err)
+    if (tech.whatsapp) {
+      try {
+        await sendEscalationNotification({ to: tech.whatsapp, ...notifyParams })
+      } catch (err) {
+        console.error('WhatsApp notification failed:', err)
+      }
     }
-  }
+
+    if (tech.email) {
+      try {
+        await sendEscalationEmail({
+          to: tech.email,
+          customerEmail: ticket.customer_email,
+          customerPhone: ticket.customer_phone,
+          aiSummary: ticket.ai_summary ?? '',
+          ...notifyParams,
+        })
+      } catch (err) {
+        console.error('Email notification failed:', err)
+      }
+    }
+  }))
 }

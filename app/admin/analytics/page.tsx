@@ -23,6 +23,7 @@ export default async function AnalyticsPage() {
     { count: escalatedTickets },
     { data: ticketsByPriority },
     { data: ticketsByModel },
+    { data: ticketsByCategory },
     { data: recentTickets },
     { data: usageThisMonth },
     { data: costLimitData },
@@ -32,6 +33,7 @@ export default async function AnalyticsPage() {
     supabase.from('support_tickets').select('*', { count: 'exact', head: true }).not('escalated_at', 'is', null),
     supabase.from('support_tickets').select('priority').gte('created_at', thirtyDaysAgo),
     supabase.from('support_tickets').select('machine_model').gte('created_at', thirtyDaysAgo).not('machine_model', 'is', null),
+    supabase.from('support_tickets').select('problem_category').gte('created_at', thirtyDaysAgo).not('problem_category', 'is', null),
     supabase.from('support_tickets').select('id, subject, status, priority, created_at')
       .gte('created_at', thirtyDaysAgo).order('created_at', { ascending: false }).limit(8),
     supabase.from('ai_usage_log').select('input_tokens, output_tokens, cost_usd').gte('created_at', monthStart),
@@ -50,6 +52,11 @@ export default async function AnalyticsPage() {
     if (t.machine_model) acc[t.machine_model] = (acc[t.machine_model] ?? 0) + 1; return acc
   }, {})
   const topModels = Object.entries(modelCounts).sort((a, b) => b[1] - a[1]).slice(0, 5)
+
+  const categoryCounts = (ticketsByCategory ?? []).reduce((acc: Record<string, number>, t) => {
+    if (t.problem_category) acc[t.problem_category] = (acc[t.problem_category] ?? 0) + 1; return acc
+  }, {})
+  const categorizedTotal = Object.values(categoryCounts).reduce((s, n) => s + n, 0)
 
   const usage = usageThisMonth ?? []
   const currentMonthCost = usage.reduce((s, r) => s + Number(r.cost_usd), 0)
@@ -184,6 +191,53 @@ export default async function AnalyticsPage() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Per categoria problema (assegnata dall'AI) */}
+        <div style={{ background: 'var(--surface)', borderRadius: 20, boxShadow: 'var(--shadow-md)', padding: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>
+              Per categoria problema
+            </h3>
+            <span style={{
+              fontSize: 10, fontWeight: 600, padding: '3px 9px', borderRadius: 20,
+              background: 'rgba(0,113,227,0.10)', color: 'var(--accent)',
+            }}>
+              AI
+            </span>
+          </div>
+          <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16 }}>
+            Tipologia assegnata automaticamente dall&apos;AI all&apos;apertura del ticket
+          </p>
+          {categorizedTotal === 0 ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 80 }}>
+              <p style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>Nessun ticket categorizzato nel periodo</p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {[
+                { key: 'hardware',  label: 'Hardware',  color: '#ff3b30' },
+                { key: 'PC',        label: 'PC',        color: '#0071e3' },
+                { key: 'software',  label: 'Software',  color: '#34c759' },
+                { key: 'firmware',  label: 'Firmware',  color: '#ff9500' },
+                { key: 'meccanica', label: 'Meccanica', color: '#8e8e93' },
+              ].map(cat => {
+                const count = categoryCounts[cat.key] ?? 0
+                const pct = categorizedTotal > 0 ? Math.round((count / categorizedTotal) * 100) : 0
+                return (
+                  <div key={cat.key}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                      <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{cat.label}</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{count}</span>
+                    </div>
+                    <div style={{ height: 6, borderRadius: 3, background: 'var(--surface-3)' }}>
+                      <div style={{ height: '100%', borderRadius: 3, width: `${pct}%`, background: cat.color, transition: 'width 0.4s' }} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
 
         {/* Ticket recenti */}
