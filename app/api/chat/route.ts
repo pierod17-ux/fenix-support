@@ -148,8 +148,18 @@ export async function POST(req: NextRequest) {
           subject: { type: 'string', description: 'Titolo breve del problema (max 80 caratteri)' },
           summary: { type: 'string', description: 'Riepilogo: problema, cosa tentato, stato attuale' },
           priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'], description: 'Urgenza' },
+          category: {
+            type: 'string',
+            enum: ['hardware', 'PC', 'software', 'firmware', 'meccanica'],
+            description: 'Classifica la tipologia del problema: ' +
+              '"hardware" = malfunzionamento delle schede elettroniche (escluso il PC); ' +
+              '"PC" = malfunzionamento del computer a bordo della macchina; ' +
+              '"software" = problema del sistema operativo o del software del PC; ' +
+              '"firmware" = malfunzionamento del firmware delle schede elettroniche; ' +
+              '"meccanica" = problema meccanico del prodotto (contenitore, rotture di parti meccaniche, ecc.).',
+          },
         },
-        required: ['subject', 'summary', 'priority'],
+        required: ['subject', 'summary', 'priority', 'category'],
       },
     }],
   })
@@ -173,12 +183,12 @@ export async function POST(req: NextRequest) {
 
           const toolUse = finalMsg.content.find(b => b.type === 'tool_use')
           if (toolUse && toolUse.type === 'tool_use' && toolUse.name === 'escalate_to_technician') {
-            const input = toolUse.input as { subject: string; summary: string; priority: string }
+            const input = toolUse.input as { subject: string; summary: string; priority: string; category?: string }
             try {
               const escRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/escalate`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ticketId, customerInfo, subject: input.subject, aiSummary: input.summary, priority: input.priority }),
+                body: JSON.stringify({ ticketId, customerInfo, subject: input.subject, aiSummary: input.summary, priority: input.priority, category: input.category }),
               })
               const escData = await escRes.json()
               controller.enqueue(encoder.encode(

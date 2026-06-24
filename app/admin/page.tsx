@@ -26,9 +26,12 @@ export default async function AdminTickets() {
   // qui: se manca SUPABASE_SERVICE_ROLE_KEY ripiega su anon e la lista risulta vuota.
   const supabase = await createClient()
 
+  // Solo le conversazioni andate in escalation a un tecnico sono "ticket".
+  // Tutte le chat (anche non escalate) sono nella sezione Conversazioni.
   const { data: tickets } = await supabase
     .from('support_tickets')
     .select('*, assignee:assigned_to(display_name)')
+    .not('escalated_at', 'is', null)
     .order('created_at', { ascending: false })
     .limit(100)
 
