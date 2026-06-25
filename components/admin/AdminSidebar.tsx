@@ -11,6 +11,7 @@ const nav = [
   { href: '/admin/training', label: 'Training AI', icon: IconBrain },
   { href: '/admin/schedule', label: 'Reperibilità', icon: IconClock },
   { href: '/admin/analytics', label: 'Analytics', icon: IconChart },
+  { href: '/admin/help', label: 'Aiuto', icon: IconHelp },
 ]
 
 export default function AdminSidebar({ role, displayName }: { role: string; displayName: string }) {
@@ -202,6 +203,9 @@ function IconClock() {
 }
 function IconChart() {
   return <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M2 17L7 11l3.5 3L14 7l4-4"/><path d="M2 17h16"/></svg>
+}
+function IconHelp() {
+  return <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><circle cx="10" cy="10" r="8"/><path d="M7.7 7.6a2.3 2.3 0 014.3 1.1c0 1.5-2.3 2.3-2.3 2.3"/><path d="M10 14.2h.01"/></svg>
 }
 function IconLogout() {
   return <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M13 3h3a1 1 0 011 1v12a1 1 0 01-1 1h-3M9 14l4-4-4-4M13 10H4"/></svg>
