@@ -1,5 +1,6 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { sendTechnicianInviteEmail } from '@/lib/email'
+import { buildSetPasswordLink } from '@/lib/auth-links'
 import { NextRequest } from 'next/server'
 
 async function getAdminClient() {
@@ -44,16 +45,7 @@ export async function POST(req: NextRequest) {
   if (linkError) return Response.json({ error: linkError.message }, { status: 500 })
 
   const userId = linkData.user.id
-  const rawLink = linkData.properties?.action_link ?? null
-  let inviteLink: string | null = null
-  if (rawLink) {
-    const url = new URL(rawLink)
-    const redirectTo = url.searchParams.get('redirect_to')
-    if (redirectTo) {
-      url.searchParams.set('redirect_to', redirectTo.replace(/^https?:\/\/localhost:\d+/, siteUrl))
-    }
-    inviteLink = url.toString()
-  }
+  const inviteLink = buildSetPasswordLink(siteUrl, linkData.properties, 'invite')
 
   // Create technician profile
   const { error: profileError } = await supabase

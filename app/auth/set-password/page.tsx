@@ -12,14 +12,32 @@ export default function SetPasswordPage() {
   const [checking, setChecking] = useState(true)
   const [ready, setReady] = useState(false)
   const [linkError, setLinkError] = useState('')
+  const [tokenHash, setTokenHash] = useState<string | null>(null)
+  const [otpType, setOtpType] = useState<'recovery' | 'invite'>('recovery')
   const router = useRouter()
   const supabase = createClient()
 
-  // The invite/recovery link redirects here with session tokens (or an error)
-  // in the URL hash: #access_token=...&refresh_token=...  OR  #error=...&error_code=...
+  // Due formati di link supportati:
+  // 1. Nuovo (a prova di scanner email): ?token_hash=...&type=recovery|invite
+  //    Il token NON viene consumato al caricamento ma solo al submit (verifyOtp),
+  //    così i filtri antispam che "pre-aprono" il link non lo bruciano.
+  // 2. Legacy: session tokens (o errore) nell'hash: #access_token=... / #error=...
   useEffect(() => {
     let active = true
     async function check() {
+      const query = typeof window !== 'undefined' ? window.location.search : ''
+      const qs = new URLSearchParams(query)
+      const qTokenHash = qs.get('token_hash')
+      if (qTokenHash) {
+        if (active) {
+          setTokenHash(qTokenHash)
+          setOtpType(qs.get('type') === 'invite' ? 'invite' : 'recovery')
+          setReady(true)
+          setChecking(false)
+        }
+        return
+      }
+
       const hash = typeof window !== 'undefined' ? window.location.hash.replace(/^#/, '') : ''
       const params = new URLSearchParams(hash)
 
@@ -67,6 +85,17 @@ export default function SetPasswordPage() {
     if (password.length < 8) { setError('La password deve avere almeno 8 caratteri'); return }
     if (password !== confirm) { setError('Le password non coincidono'); return }
     setLoading(true)
+
+    // Flusso token_hash: il token si consuma solo ora, al gesto dell'utente
+    if (tokenHash) {
+      const { error: otpErr } = await supabase.auth.verifyOtp({ type: otpType, token_hash: tokenHash })
+      if (otpErr) {
+        setError('Il link è scaduto o è già stato usato. Richiedi un nuovo link e riprova.')
+        setLoading(false)
+        return
+      }
+      setTokenHash(null) // consumato: eventuali retry proseguono con la sessione appena creata
+    }
 
     const { error: updErr } = await supabase.auth.updateUser({ password })
     if (updErr) { setError(updErr.message); setLoading(false); return }

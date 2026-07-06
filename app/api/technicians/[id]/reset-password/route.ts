@@ -1,5 +1,6 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { sendPasswordResetEmail } from '@/lib/email'
+import { buildSetPasswordLink } from '@/lib/auth-links'
 import { NextRequest } from 'next/server'
 
 async function getAdminClient() {
@@ -37,14 +38,9 @@ export async function POST(
   })
   if (error) return Response.json({ error: error.message }, { status: 500 })
 
-  const rawResetLink = linkData.properties?.action_link ?? null
-  if (rawResetLink) {
+  const resetLink = buildSetPasswordLink(siteUrl, linkData.properties, 'recovery')
+  if (resetLink) {
     try {
-      const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://fenix-support.netlify.app').replace(/\/$/, '')
-      const url = new URL(rawResetLink)
-      const redirectTo = url.searchParams.get('redirect_to')
-      if (redirectTo) url.searchParams.set('redirect_to', redirectTo.replace(/^https?:\/\/localhost:\d+/, siteUrl))
-      const resetLink = url.toString()
       await sendPasswordResetEmail({ to: tech.email, name: tech.display_name ?? 'Tecnico', resetLink })
     } catch (err) {
       console.error('Failed to send reset email:', err)
