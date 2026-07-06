@@ -1,5 +1,6 @@
 import { createServiceClient } from '@/lib/supabase/server'
 import { sendPasswordResetEmail } from '@/lib/email'
+import { buildSetPasswordLink } from '@/lib/auth-links'
 import { NextRequest } from 'next/server'
 
 // Endpoint pubblico (utente non loggato): invia una mail di reset password.
@@ -35,15 +36,12 @@ export async function POST(req: NextRequest) {
         options: { redirectTo: `${siteUrl}/auth/set-password` },
       })
 
-      const rawResetLink = !error ? (linkData?.properties?.action_link ?? null) : null
-      if (rawResetLink) {
-        const url = new URL(rawResetLink)
-        const redirectTo = url.searchParams.get('redirect_to')
-        if (redirectTo) url.searchParams.set('redirect_to', redirectTo.replace(/^https?:\/\/localhost:\d+/, siteUrl))
+      const resetLink = !error ? buildSetPasswordLink(siteUrl, linkData?.properties, 'recovery') : null
+      if (resetLink) {
         await sendPasswordResetEmail({
           to: profile.email,
           name: profile.display_name ?? 'Tecnico',
-          resetLink: url.toString(),
+          resetLink,
         })
       }
     }
