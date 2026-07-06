@@ -5,7 +5,7 @@ Cliente: Fenix / Damtec. Admin: Piero D'Amico (pierod17@gmail.com).
 
 ## Stack
 - Next.js 15 App Router · TypeScript strict · Tailwind v4
-- Supabase PostgreSQL + RLS (project: `hvrjnuszitrybesklnyt`)
+- Supabase PostgreSQL + RLS (project: `zrjskqqngaijloamiros`, org **FreeDamtec**, piano Free — attenzione: i progetti Free vanno in pausa dopo 7 giorni senza traffico)
 - Anthropic Claude `claude-sonnet-4-6` streaming SSE
 - PostgreSQL full-text search (RAG, tsvector italian)
 - Resend email (from: sensor-smart@damtec.net — dominio verificato su Resend)
