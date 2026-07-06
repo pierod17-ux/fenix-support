@@ -28,10 +28,12 @@ CREATE TABLE IF NOT EXISTS technician_profiles (
 );
 
 -- Crea automaticamente il profilo alla registrazione utente
+-- SET search_path obbligatorio: il servizio auth invoca il trigger con un
+-- search_path che non include public → senza, "relation does not exist"
 CREATE OR REPLACE FUNCTION create_technician_profile()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
-  INSERT INTO technician_profiles (id, display_name, email)
+  INSERT INTO public.technician_profiles (id, display_name, email)
   VALUES (NEW.id, NEW.raw_user_meta_data->>'display_name', NEW.email)
   ON CONFLICT (id) DO NOTHING;
   RETURN NEW;
