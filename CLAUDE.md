@@ -43,6 +43,16 @@ if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 // poi usa supabase (o createServiceClient()) per le query DB
 ```
 
+## Ruoli e account proprietario
+- Ruoli in `technician_profiles.role`: `admin` (accesso completo) | `technician` (vede solo i propri turni, in sola lettura).
+- Dal tab **Tecnici** un admin promuove/declassa gli altri ("Rendi admin" / "Rendi tecnico").
+- **Account proprietario**: `lib/owner.ts` → `isOwnerEmail()`, configurabile con env `OWNER_EMAIL`
+  (default `pierod17@gmail.com`; esposto al client come `NEXT_PUBLIC_OWNER_EMAIL` da `next.config.ts`).
+  Non può essere **eliminato, disabilitato né declassato** → garantisce che esista sempre un admin.
+- Stessa protezione sul **proprio** account (niente auto-eliminazione/auto-declassamento): evita il lockout.
+- ⚠️ Le regole sono applicate **lato server** in `app/api/technicians/[id]/route.ts` (PATCH e DELETE).
+  L'UI nasconde i pulsanti solo per coerenza visiva — non è lì la sicurezza.
+
 ## RLS ai_config
 - **SELECT**: pubblico (anche anon) — la chat route legge config senza sessione utente
 - **INSERT/UPDATE**: solo admin (`technician_profiles.role = 'admin'`)
@@ -117,6 +127,7 @@ supabase/
 - ✅ Chat AI streaming con escalation tool — IA "**Aura**", multilingua (rileva lingua utente)
 - ✅ Modelli macchina: Evolution, Essenza, Sensor Smart, Sensor Therapy
 - ✅ Sistema reperibilità: tecnici (inviti, disable, reset pwd, **elimina**) + turni settimanali
+- ✅ Ruoli: promozione tecnico→admin dall'UI; account proprietario protetto (vedi sezione Ruoli)
 - ✅ Permessi turni: admin gestisce tutto; tecnico vede solo i propri (read-only)
 - ✅ Stato online tecnici (heartbeat → `last_seen`, pallino verde in reperibilità)
 - ✅ Mail reperibilità automatica (pg_cron → `/api/cron/on-call`, 10min prima + inizio turno)
