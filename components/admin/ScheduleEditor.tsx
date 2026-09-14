@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
+import { isOwnerEmail } from '@/lib/owner'
 
 const DAYS_FULL = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato']
 
@@ -210,6 +211,29 @@ export default function ScheduleEditor({
     }
   }
 
+  // Promuove un tecnico ad amministratore o lo riporta a tecnico.
+  // Il proprietario e se stessi non sono modificabili (bloccato anche lato server).
+  async function changeRole(t: Technician) {
+    const next = t.role === 'admin' ? 'technician' : 'admin'
+    const who = t.display_name ?? t.email ?? 'questo utente'
+    const msg = next === 'admin'
+      ? `Rendere ${who} amministratore?\n\nPotrà gestire tecnici e turni, knowledge base, Training AI e tutti i ticket.`
+      : `Togliere i permessi di amministratore a ${who}?\n\nTornerà a vedere solo i propri turni.`
+    if (!confirm(msg)) return
+
+    const res = await fetch(`/api/technicians/${t.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: next }),
+    })
+    if (res.ok) {
+      setTechnicians(prev => prev.map(x => x.id === t.id ? { ...x, role: next } : x))
+    } else {
+      const d = await res.json().catch(() => ({}))
+      alert(`Errore: ${d.error ?? res.status}`)
+    }
+  }
+
   // ─── Shifts ───
   async function addShift(e: React.FormEvent, day: number) {
     e.preventDefault()
@@ -321,6 +345,12 @@ export default function ScheduleEditor({
                 const sc = STATUS_COLOR[status] ?? STATUS_COLOR.active
                 const initial = (t.display_name ?? '?').charAt(0).toUpperCase()
                 const isDisabled = status === 'disabled'
+                const owner = isOwnerEmail(t.email)
+                const isSelf = t.id === currentUserId
+                const isAdminRole = t.role === 'admin'
+                // Il proprietario e il proprio account non sono declassabili,
+                // disabilitabili né eliminabili (stessa regola applicata lato server).
+                const locked = owner || isSelf
                 return (
                   <div key={t.id} style={{
                     display: 'flex', alignItems: 'center', gap: 14, padding: '16px 20px',
@@ -350,6 +380,23 @@ export default function ScheduleEditor({
                         }}>
                           {STATUS_LABEL[status] ?? status}
                         </span>
+                        {owner ? (
+                          <span style={{
+                            fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 20,
+                            background: 'rgba(0,113,227,0.12)', color: 'var(--accent)',
+                            textTransform: 'uppercase', letterSpacing: '0.4px',
+                          }}>
+                            Proprietario
+                          </span>
+                        ) : isAdminRole && (
+                          <span style={{
+                            fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 20,
+                            background: 'rgba(88,86,214,0.12)', color: '#5856d6',
+                            textTransform: 'uppercase', letterSpacing: '0.4px',
+                          }}>
+                            Admin
+                          </span>
+                        )}
                         {isOnline(t.last_seen, now) && (
                           <span style={{
                             fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 20,
@@ -384,13 +431,21 @@ export default function ScheduleEditor({
                     <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                       <ActionBtn onClick={() => openEdit(t)} label="Modifica" />
                       <ActionBtn onClick={() => resetPassword(t)} label="Reset pwd" />
-                      <ActionBtn
-                        onClick={() => toggleStatus(t)}
-                        label={isDisabled ? 'Abilita' : 'Disabilita'}
-                        danger={!isDisabled}
-                        success={isDisabled}
-                      />
-                      <ActionBtn onClick={() => deleteTechnician(t)} label="Elimina" danger />
+                      {!locked && (
+                        <ActionBtn
+                          onClick={() => changeRole(t)}
+                          label={isAdminRole ? 'Rendi tecnico' : 'Rendi admin'}
+                        />
+                      )}
+                      {!locked && (
+                        <ActionBtn
+                          onClick={() => toggleStatus(t)}
+                          label={isDisabled ? 'Abilita' : 'Disabilita'}
+                          danger={!isDisabled}
+                          success={isDisabled}
+                        />
+                      )}
+                      {!locked && <ActionBtn onClick={() => deleteTechnician(t)} label="Elimina" danger />}
                     </div>
                   </div>
                 )
