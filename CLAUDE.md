@@ -66,7 +66,7 @@ veniva bruciato dal primo GET dello scanner → "link scaduto" prima del clic ut
 app/
   chat/                    → pagina chat pubblica cliente
   admin/
-    schedule/              → gestione reperibilità (tecnici + turni)
+    schedule/              → "Tecnici e turni": account tecnici (invito/reset/elimina) + turni reperibilità
     training/              → Training AI (contesti, regole, costi)
     tickets/               → lista e dettaglio ticket
   tech/[token]/            → chat diretta tecnico (accesso via link email)

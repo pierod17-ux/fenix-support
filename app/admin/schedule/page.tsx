@@ -47,11 +47,11 @@ export default async function SchedulePage() {
         marginBottom: 24,
       }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.4px' }}>
-          {isAdmin ? 'Reperibilità' : 'I miei turni'}
+          {isAdmin ? 'Tecnici e turni' : 'I miei turni'}
         </h1>
         <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>
           {isAdmin
-            ? 'Gestisci i tecnici e i turni settimanali di reperibilità'
+            ? 'Crea gli account dei tecnici (invito via email) e assegnali ai turni di reperibilità'
             : 'Visualizza i tuoi turni di reperibilità settimanali'}
         </p>
       </div>

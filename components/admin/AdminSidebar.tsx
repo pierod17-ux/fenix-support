@@ -9,7 +9,7 @@ const nav = [
   { href: '/admin/conversations', label: 'Conversazioni', icon: IconChat },
   { href: '/admin/knowledge', label: 'Knowledge Base', icon: IconBook },
   { href: '/admin/training', label: 'Training AI', icon: IconBrain },
-  { href: '/admin/schedule', label: 'Reperibilità', icon: IconClock },
+  { href: '/admin/schedule', label: 'Tecnici e turni', icon: IconClock },
   { href: '/admin/analytics', label: 'Analytics', icon: IconChart },
   { href: '/admin/help', label: 'Aiuto', icon: IconHelp },
 ]
