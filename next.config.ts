@@ -10,6 +10,9 @@ const nextConfig: NextConfig = {
   env: {
     NEXT_PUBLIC_BUILD_REF: (process.env.COMMIT_REF ?? '').slice(0, 7) || 'dev',
     NEXT_PUBLIC_BUILD_TIME: new Date().toISOString(),
+    // Reso pubblico per far nascere/sparire i pulsanti nell'UI admin; la
+    // protezione reale dell'account proprietario è applicata nelle API routes.
+    NEXT_PUBLIC_OWNER_EMAIL: process.env.OWNER_EMAIL ?? 'pierod17@gmail.com',
   },
   webpack: (config) => {
     config.resolve.alias = { ...config.resolve.alias, canvas: false }
