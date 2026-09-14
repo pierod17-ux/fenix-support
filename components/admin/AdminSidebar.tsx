@@ -14,6 +14,18 @@ const nav = [
   { href: '/admin/help', label: 'Aiuto', icon: IconHelp },
 ]
 
+// Marcatore di build: commit + data del deploy in corso.
+// Sostituisce il vecchio "v1.0.0" hardcoded, che non cambiava mai e non permetteva
+// di capire se il browser stesse servendo l'ultima versione o una copia in cache.
+function buildLabel() {
+  const ref = process.env.NEXT_PUBLIC_BUILD_REF || 'dev'
+  const iso = process.env.NEXT_PUBLIC_BUILD_TIME
+  if (!iso) return ref
+  const d = new Date(iso)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${ref} · ${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
 export default function AdminSidebar({ role, displayName }: { role: string; displayName: string }) {
   const pathname = usePathname()
   const router = useRouter()
@@ -134,7 +146,7 @@ export default function AdminSidebar({ role, displayName }: { role: string; disp
             Esci
           </button>
           <p style={{ fontSize: 10, color: 'var(--text-tertiary)', opacity: 0.45, marginTop: 8, paddingLeft: 4 }}>
-            Fenix Support v1.0.0
+            Fenix Support · {buildLabel()}
           </p>
         </div>
       </aside>
