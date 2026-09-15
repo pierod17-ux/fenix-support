@@ -192,7 +192,7 @@ export async function POST(req: NextRequest) {
               })
               const escData = await escRes.json()
               controller.enqueue(encoder.encode(
-                `data: ${JSON.stringify({ type: 'escalation', ticketId: escData.ticketId })}\n\n`
+                `data: ${JSON.stringify({ type: 'escalation', ticketId: escData.ticketId, onCall: escData.onCall, onCallCount: escData.onCallCount })}\n\n`
               ))
             } catch (err) { console.error('Escalation failed:', err) }
           }

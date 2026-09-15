@@ -226,8 +226,24 @@ CREATE TABLE IF NOT EXISTS direct_chats (
   technician_id uuid REFERENCES technician_profiles(id),
   status text DEFAULT 'active' CHECK (status IN ('active', 'closed')),
   access_token text UNIQUE DEFAULT encode(gen_random_bytes(24), 'base64'),
+  claimed_at timestamptz,           -- quando un tecnico l'ha presa in carico
   created_at timestamptz DEFAULT now()
 );
+ALTER TABLE direct_chats ADD COLUMN IF NOT EXISTS claimed_at timestamptz;
+
+-- ---------- INVITI PERSONALI ALLA CHAT DIRETTA ----------
+-- Un token per ogni tecnico di turno. La chat nasce con technician_id NULL: il
+-- primo tecnico che apre il proprio link la prende in carico (UPDATE condizionale
+-- atomico in lib/direct-chat.ts), gli altri ricevono l'avviso. Solo service_role.
+CREATE TABLE IF NOT EXISTS direct_chat_invites (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  chat_id uuid NOT NULL REFERENCES direct_chats(id) ON DELETE CASCADE,
+  technician_id uuid NOT NULL REFERENCES technician_profiles(id) ON DELETE CASCADE,
+  token text UNIQUE NOT NULL,
+  created_at timestamptz DEFAULT now(),
+  UNIQUE (chat_id, technician_id)
+);
+CREATE INDEX IF NOT EXISTS idx_direct_chat_invites_chat ON direct_chat_invites(chat_id);
 
 -- ---------- DEDUP NOTIFICHE REPERIBILITÀ ----------
 CREATE TABLE IF NOT EXISTS on_call_notifications (
@@ -253,6 +269,7 @@ ALTER TABLE ai_config             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_usage_log          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE direct_chats          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE on_call_notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE direct_chat_invites  ENABLE ROW LEVEL SECURITY;
 
 -- technician_profiles
 DROP POLICY IF EXISTS "Tecnico vede proprio profilo" ON technician_profiles;
@@ -308,7 +325,7 @@ CREATE POLICY "Chiunque puo lasciare feedback" ON ai_feedback FOR INSERT WITH CH
 DROP POLICY IF EXISTS "service_role_all_direct_chats" ON direct_chats;
 CREATE POLICY "service_role_all_direct_chats" ON direct_chats FOR ALL TO service_role USING (true) WITH CHECK (true);
 
--- on_call_notifications: nessuna policy (accesso solo via service_role che bypassa RLS)
+-- on_call_notifications e direct_chat_invites: nessuna policy (accesso solo via service_role che bypassa RLS)
 
 -- ============================================================
 -- STORAGE BUCKETS

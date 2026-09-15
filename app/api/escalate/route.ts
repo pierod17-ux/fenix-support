@@ -1,6 +1,7 @@
 import { createServiceClient } from '@/lib/supabase/server'
 import { sendEscalationNotification } from '@/lib/meta-whatsapp'
 import { sendEscalationEmail } from '@/lib/email'
+import { getOnCallTechnicians, getAllActiveTechnicians, type OnCallTech } from '@/lib/direct-chat'
 import { NextRequest } from 'next/server'
 
 export async function POST(req: NextRequest) {
@@ -23,6 +24,7 @@ export async function POST(req: NextRequest) {
     .select('*, assignee:assigned_to(display_name, whatsapp, email)')
     .single()
 
+  let target = ticket
   if (ticketErr || !ticket) {
     // Crea nuovo ticket se non esiste
     const { data: newTicket } = await supabase
@@ -47,17 +49,21 @@ export async function POST(req: NextRequest) {
     if (!newTicket) {
       return Response.json({ error: 'Cannot create ticket' }, { status: 500 })
     }
-
-    // Trova il tecnico di turno
-    await notifyOnCallTechnician(supabase, newTicket)
-    return Response.json({ ticketId: newTicket.id })
+    target = newTicket
   }
 
-  await notifyOnCallTechnician(supabase, ticket)
-  return Response.json({ ticketId: ticket.id })
+  const { onCall, onCallCount } = await notifyTechnicians(supabase, target)
+  // onCall dice al client se ha senso offrire la chat diretta
+  return Response.json({ ticketId: target.id, onCall, onCallCount })
 }
 
-async function notifyOnCallTechnician(
+// Chi avvisare:
+//  - tecnici di turno adesso → notifica di escalation classica (potranno prendere
+//    in carico la chat diretta, se il cliente la richiede);
+//  - NESSUNO di turno → avviso "ticket aperto, nessun tecnico di turno" a TUTTI i
+//    tecnici attivi (admin inclusi). Nessuna chat diretta verra' avviata.
+// In entrambi i casi il ticket resta non assegnato finche' qualcuno lo prende in carico.
+async function notifyTechnicians(
   supabase: Awaited<ReturnType<typeof createServiceClient>>,
   ticket: {
     id: string
@@ -71,46 +77,16 @@ async function notifyOnCallTechnician(
     machine_serial: string | null
     center_name: string | null
   }
-) {
-  type Tech = { id: string; display_name: string | null; whatsapp: string | null; email: string | null }
+): Promise<{ onCall: boolean; onCallCount: number }> {
+  const onCallTechs = await getOnCallTechnicians(supabase)
+  const noOneOnCall = onCallTechs.length === 0
+  const targets: OnCallTech[] = noOneOnCall ? await getAllActiveTechnicians(supabase) : onCallTechs
+  if (targets.length === 0) return { onCall: false, onCallCount: 0 }
 
-  // Trova TUTTI i tecnici di turno per l'orario attuale (un turno può avere più tecnici)
-  const now = new Date()
-  const dayOfWeek = now.getDay()
-  const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
-
-  const { data: schedules } = await supabase
-    .from('technician_schedules')
-    .select('technician:technician_id(id, display_name, whatsapp, email)')
-    .eq('day_of_week', dayOfWeek)
-    .eq('is_active', true)
-    .lte('start_time', currentTime)
-    .gte('end_time', currentTime)
-
-  let techs: Tech[] = (schedules ?? [])
-    .map(s => (Array.isArray(s.technician) ? s.technician[0] : s.technician) as Tech | null)
-    .filter((t): t is Tech => !!t)
-
-  // Se nessun tecnico è di turno, fallback: notifica tutti i tecnici attivi
-  if (techs.length === 0) {
-    const { data: fallback } = await supabase
-      .from('technician_profiles')
-      .select('id, display_name, whatsapp, email')
-      .eq('role', 'technician')
-      .neq('account_status', 'disabled')
-    techs = (fallback ?? []) as Tech[]
-  }
-
-  // Dedup per id (un tecnico può comparire in più righe di turno)
-  techs = Array.from(new Map(techs.map(t => [t.id, t])).values())
-  if (techs.length === 0) return
-
-  // Nessuna assegnazione automatica: il ticket resta non assegnato finché un
-  // tecnico non lo prende in carico. Vengono notificati tutti i reperibili.
-  const portalUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://assistenza.fenixsrl.it'
+  const portalUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://fenix-support.netlify.app'
   const machineName = [ticket.machine_model, ticket.machine_serial].filter(Boolean).join(' — ') || 'N/D'
 
-  await Promise.all(techs.map(async tech => {
+  await Promise.all(targets.map(async tech => {
     const notifyParams = {
       technicianName: tech.display_name ?? 'Tecnico',
       ticketId: ticket.id,
@@ -121,7 +97,8 @@ async function notifyOnCallTechnician(
       portalUrl,
     }
 
-    if (tech.whatsapp) {
+    // WhatsApp solo ai tecnici di turno: un avviso "nessuno di turno" via email basta
+    if (tech.whatsapp && !noOneOnCall) {
       try {
         await sendEscalationNotification({ to: tech.whatsapp, ...notifyParams })
       } catch (err) {
@@ -136,6 +113,7 @@ async function notifyOnCallTechnician(
           customerEmail: ticket.customer_email,
           customerPhone: ticket.customer_phone,
           aiSummary: ticket.ai_summary ?? '',
+          noOneOnCall,
           ...notifyParams,
         })
       } catch (err) {
@@ -143,4 +121,6 @@ async function notifyOnCallTechnician(
       }
     }
   }))
+
+  return { onCall: !noOneOnCall, onCallCount: onCallTechs.length }
 }
