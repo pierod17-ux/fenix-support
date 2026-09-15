@@ -6,6 +6,8 @@ import AIRulesEditor from '@/components/admin/AIRulesEditor'
 import AICostTracker from '@/components/admin/AICostTracker'
 import DocumentUpload from '@/components/admin/DocumentUpload'
 import ImportFromDocument from '@/components/admin/ImportFromDocument'
+import DiagnosticsToggle from '@/components/admin/DiagnosticsToggle'
+import { isDiagnosticsConfigured } from '@/lib/diagnostics'
 
 export default async function TrainingPage() {
   const supabase = await createClient()
@@ -24,6 +26,7 @@ export default async function TrainingPage() {
     { data: costLimitConfig },
     { data: closedTickets },
     { data: usageThisMonth },
+    { data: diagnosticsConfig },
   ] = await Promise.all([
     supabase.from('ai_config').select('value').eq('key', 'system_contexts').single(),
     supabase.from('ai_config').select('value').eq('key', 'behavior_rules').single(),
@@ -39,6 +42,7 @@ export default async function TrainingPage() {
       .from('ai_usage_log')
       .select('input_tokens, output_tokens, cost_usd')
       .gte('created_at', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()),
+    supabase.from('ai_config').select('value').eq('key', 'diagnostics_enabled').maybeSingle(),
   ])
 
   const contexts = (() => {
@@ -90,6 +94,12 @@ export default async function TrainingPage() {
           callCount: usage.length,
           limit: costLimit,
         }} />
+
+        {/* Diagnostica remota: interruttore */}
+        <DiagnosticsToggle
+          initialEnabled={diagnosticsConfig?.value === 'true'}
+          apiKeyConfigured={isDiagnosticsConfigured()}
+        />
 
         {/* Behavior rules */}
         <AIRulesEditor initialRules={rules} />

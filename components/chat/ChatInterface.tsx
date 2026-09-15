@@ -228,6 +228,9 @@ export default function ChatInterface() {
             if (parsed.type === 'text') {
               accText += parsed.text
               setStreamingText(accText)
+            } else if (parsed.type === 'status') {
+              // indicatore transitorio (es. "Consulto la diagnostica…"): non entra nel messaggio
+              if (!accText) setStreamingText(`⏳ ${parsed.text}`)
             } else if (parsed.type === 'escalation') {
               if (parsed.ticketId) setTicketId(parsed.ticketId)
               if (typeof parsed.onCall === 'boolean') setOnCall(parsed.onCall)
