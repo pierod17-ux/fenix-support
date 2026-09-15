@@ -19,6 +19,13 @@ Cliente: Fenix / Damtec. Admin: Piero D'Amico (pierod17@gmail.com).
 - **Schema versionato**: `supabase/full_schema.sql` (schema completo idempotente, fedele al live) + `supabase/seed_data.sql` (KB + config). ⚠️ `supabase/migration.sql` è **OBSOLETO** (solo schema iniziale del 19/06, contiene pure il bug RLS ricorsivo poi corretto) — NON usarlo.
 - **Gotcha trigger**: `create_technician_profile()` DEVE avere `SET search_path = public`, altrimenti il servizio Auth (che invoca il trigger con un search_path senza `public`) fallisce con "relation technician_profiles does not exist" → creazione utenti KO.
 
+## Insidie note lato client
+- **Niente testo dipendente da fuso/orario nel render SSR** dei client component: il marcatore di build in
+  `AdminSidebar` (`BuildLabel`) calcola la data solo in `useEffect`. Formattarla anche lato server (UTC ≠
+  fuso del browser) causava un hydration mismatch React #418 su ogni pagina admin.
+- Gli input della proposta di import sono normali campi controllati: se "non si modificano", verificare
+  prima l'idratazione (errori console) e il browser, non il componente — testato funzionante in Chromium.
+
 ## Flusso principale
 1. Cliente apre `/chat` → form info → chat streaming AI
 2. AI diagnostica con RAG su `knowledge_chunks`
@@ -45,7 +52,10 @@ if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
 ## Ruoli e account proprietario
 - Ruoli in `technician_profiles.role`: `admin` (accesso completo) | `technician` (vede solo i propri turni, in sola lettura).
-- Dal tab **Tecnici** un admin promuove/declassa gli altri ("Rendi admin" / "Rendi tecnico").
+- Dal tab **Tecnici** un admin promuove/declassa gli altri ("Rendi admin" / "Rendi tecnico"). Gli admin sono
+  contrassegnati con badge **Admin** (viola) nel tab Tecnici e nel tab Turni (riga turno e selettore).
+- **Training AI è admin-only su due livelli**: voce nascosta ai tecnici in `AdminSidebar` (`adminOnly`) e
+  redirect server-side in `app/admin/training/page.tsx` sull'URL diretto.
 - **Account proprietario**: `lib/owner.ts` → `isOwnerEmail()`, configurabile con env `OWNER_EMAIL`
   (default `pierod17@gmail.com`; esposto al client come `NEXT_PUBLIC_OWNER_EMAIL` da `next.config.ts`).
   Non può essere **eliminato, disabilitato né declassato** → garantisce che esista sempre un admin.
@@ -65,6 +75,10 @@ coi clienti senza che nessuno se ne accorga. **Non trasformarlo in auto-apply.**
 - UI `components/admin/ImportFromDocument.tsx`; l'applicazione riusa `/api/config/rules` e `/contexts`.
 - Un file di sola documentazione tecnica viene riconosciuto (`kind: documentation`) e reindirizzato
   alla Knowledge Base, che è il posto giusto per contenuti da consultare via RAG.
+- **Controllo conflitti** (`app/api/config/check-conflicts`, admin-only): confronta regole candidate con quelle
+  attive via Claude e segnala `contradiction` / `duplicate` con motivazione. **Segnala, non blocca**: usato
+  dall'import (avviso sotto ogni regola proposta) e dall'aggiunta manuale in `AIRulesEditor`
+  ("Aggiungi comunque"). Se il controllo fallisce, l'inserimento procede senza avviso (mai bloccare l'admin).
 
 ## RLS ai_config
 - **SELECT**: pubblico (anche anon) — la chat route legge config senza sessione utente
@@ -106,6 +120,7 @@ app/
     auth/forgot-password/  → recupero password pubblico (invia email di reset)
     config/
       import-document/     → analizza un file e PROPONE regole/contesti (admin, non scrive)
+      check-conflicts/     → segnala contraddizioni/duplicati tra regole candidate ed esistenti (admin)
       contexts/            → GET/POST system_contexts (multi-sezione)
       rules/               → GET/POST behavior_rules
       cost-limit/          → GET/POST cost_limit_usd
@@ -158,6 +173,7 @@ supabase/
 - ✅ Email branded da `sensor-smart@damtec.net`: invito, reset pwd, chat diretta, reperibilità
 - ✅ Training AI: contesti multi-sezione, regole comportamento, monitoraggio costi
 - ✅ Importa regole/contesti da documento con revisione umana (vedi sezione dedicata)
+- ✅ Controllo conflitti tra regole (import e aggiunta manuale): segnala, non blocca
 - ✅ RAG su knowledge base (documenti + ticket risolti)
 
 ## Automazioni infra
