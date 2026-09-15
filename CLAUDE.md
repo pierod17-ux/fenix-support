@@ -20,9 +20,12 @@ Cliente: Fenix / Damtec. Admin: Piero D'Amico (pierod17@gmail.com).
 - **Gotcha trigger**: `create_technician_profile()` DEVE avere `SET search_path = public`, altrimenti il servizio Auth (che invoca il trigger con un search_path senza `public`) fallisce con "relation technician_profiles does not exist" → creazione utenti KO.
 
 ## Insidie note lato client
-- **Niente testo dipendente da fuso/orario nel render SSR** dei client component: il marcatore di build in
-  `AdminSidebar` (`BuildLabel`) calcola la data solo in `useEffect`. Formattarla anche lato server (UTC ≠
-  fuso del browser) causava un hydration mismatch React #418 su ogni pagina admin.
+- **Niente testo dipendente da locale/fuso nel render SSR** dei client component, o React lancia un
+  hydration mismatch (#418) e ri-renderizza tutto lato client:
+  - `Number#toLocaleString('it-IT')` → su Node `1234` (CLDR it: niente separatore sotto 10.000), in Chromium
+    `1.234`. Successo su `/admin/training` coi conteggi caratteri. Usare **`formatInt()` di `lib/format.ts`**.
+  - Date/ore: il marcatore di build (`BuildLabel` in `AdminSidebar`) formatta solo in `useEffect`
+    (server UTC ≠ fuso del browser).
 - Gli input della proposta di import sono normali campi controllati: se "non si modificano", verificare
   prima l'idratazione (errori console) e il browser, non il componente — testato funzionante in Chromium.
 
@@ -134,6 +137,7 @@ components/
     AICostTracker.tsx      → monitoraggio costi mensili
     ImportFromDocument.tsx → revisione/applicazione delle regole proposte da un documento
 lib/
+  format.ts                → formatInt(): numeri deterministici (mai toLocaleString nei render)
   supabase/server.ts       → createClient() e createServiceClient()
   email.ts                 → template email branded (Resend)
   auth-links.ts            → buildSetPasswordLink() (link email token_hash anti-scanner)

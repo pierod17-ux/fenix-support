@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
+import { formatInt } from '@/lib/format'
 
 interface SystemContext {
   id: string
@@ -188,7 +189,7 @@ export default function SystemContextsEditor({ initialContexts }: { initialConte
                 {/* Char count */}
                 {!isOpen && ctx.content.length > 0 && (
                   <span style={{ fontSize: 11, color: 'var(--text-tertiary)', flexShrink: 0 }}>
-                    {ctx.content.length.toLocaleString('it-IT')} car.
+                    {formatInt(ctx.content.length)} car.
                   </span>
                 )}
 
@@ -248,7 +249,7 @@ export default function SystemContextsEditor({ initialContexts }: { initialConte
                     onBlur={e => (e.target.style.borderColor = 'var(--border)')}
                   />
                   <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 6 }}>
-                    {ctx.content.length.toLocaleString('it-IT')} caratteri
+                    {formatInt(ctx.content.length)} caratteri
                   </p>
                 </div>
               )}
@@ -265,7 +266,7 @@ export default function SystemContextsEditor({ initialContexts }: { initialConte
           borderTop: '1px solid var(--border)',
           marginTop: 4,
         }}>
-          {contexts.length} sezioni · {totalChars.toLocaleString('it-IT')} caratteri totali · si fondono in un unico blocco &ldquo;Conoscenza di base&rdquo;
+          {contexts.length} sezioni · {formatInt(totalChars)} caratteri totali · si fondono in un unico blocco &ldquo;Conoscenza di base&rdquo;
         </div>
       )}
     </div>

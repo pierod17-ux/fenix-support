@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { formatInt } from '@/lib/format'
 
 interface CostData {
   currentMonthCost: number
@@ -87,7 +88,7 @@ export default function AICostTracker({ data }: { data: CostData }) {
         {/* Stats grid */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 20 }}>
           {[
-            { label: 'Conversazioni', value: data.callCount.toLocaleString('it-IT') },
+            { label: 'Conversazioni', value: formatInt(data.callCount) },
             { label: 'Token input', value: (data.inputTokens / 1000).toFixed(1) + 'K' },
             { label: 'Token output', value: (data.outputTokens / 1000).toFixed(1) + 'K' },
           ].map(s => (
