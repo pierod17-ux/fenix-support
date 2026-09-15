@@ -97,7 +97,7 @@ export default async function TrainingPage() {
 
         {/* Diagnostica remota: interruttore */}
         <DiagnosticsToggle
-          initialEnabled={diagnosticsConfig?.value === 'true'}
+          initialDiscloseToCustomer={diagnosticsConfig?.value !== 'false'}
           apiKeyConfigured={isDiagnosticsConfigured()}
         />
 

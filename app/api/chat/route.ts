@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createServiceClient } from '@/lib/supabase/server'
 import { NextRequest } from 'next/server'
-import { STATO_MACCHINA_TOOL, diagnosticsPrompt, digitsOnly, fetchMachineStatus, isDiagnosticsEnabled } from '@/lib/diagnostics'
+import { STATO_MACCHINA_TOOL, diagnosticsPrompt, digitsOnly, fetchMachineStatus, isDiagnosticsConfigured, shouldDiscloseToCustomer } from '@/lib/diagnostics'
 
 function getAnthropic() {
   return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? 'placeholder' })
@@ -131,15 +131,19 @@ export async function POST(req: NextRequest) {
 
   const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')
   const supabase = await createServiceClient()
-  const [systemPrompt, ragContext, diagnosticsOn] = await Promise.all([
+  // Il tool è sempre attivo quando la chiave è configurata (nessun interruttore
+  // lo spegne del tutto). L'unica cosa che l'admin controlla è se il referto
+  // tecnico viene mostrato al cliente o resta a uso interno.
+  const diagnosticsConfigured = isDiagnosticsConfigured()
+  const [systemPrompt, ragContext, discloseFull] = await Promise.all([
     buildSystemPrompt(),
     lastUserMsg ? retrieveContext(lastUserMsg.content) : Promise.resolve(''),
-    isDiagnosticsEnabled(supabase),
+    diagnosticsConfigured ? shouldDiscloseToCustomer(supabase) : Promise.resolve(true),
   ])
 
   const serialHint = digitsOnly(customerInfo?.machineSerial)
   const system = systemPrompt + ragContext +
-    (diagnosticsOn ? diagnosticsPrompt(serialHint, customerInfo?.machineModel ?? null) : '')
+    (diagnosticsConfigured ? diagnosticsPrompt(serialHint, customerInfo?.machineModel ?? null, discloseFull) : '')
 
   const escalateTool = {
     name: 'escalate_to_technician',
@@ -165,7 +169,7 @@ export async function POST(req: NextRequest) {
     },
   }
   // Il tool di diagnostica esiste solo se l'admin ha abilitato la funzione
-  const tools = diagnosticsOn ? [escalateTool, STATO_MACCHINA_TOOL] : [escalateTool]
+  const tools = diagnosticsConfigured ? [escalateTool, STATO_MACCHINA_TOOL] : [escalateTool]
 
   const encoder = new TextEncoder()
   const readable = new ReadableStream({

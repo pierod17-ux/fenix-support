@@ -52,24 +52,37 @@ Logica in `lib/direct-chat.ts` (`getOnCallTechnicians`, `resolveChatToken`, `cla
 - Token: l'`access_token` della chat serve al **cliente** (solo GET/polling) e ai vecchi link; solo i token di
   `direct_chat_invites` identificano un tecnico e permettono di scrivere (`POST /api/direct-chat/[token]`).
 
-## Diagnostica remota Evolution (tool `stato_macchina`) — abilitabile dall'admin
+## Diagnostica remota Evolution (tool `stato_macchina`) — SEMPRE attiva se configurata
 Servizio esterno `damtec-mysql-analyzer` (`GET /api/machine/status?serial=…`, header `Authorization: Bearer STATUS_API_KEY`):
 dato il seriale restituisce `summary`, `status` (ok/warning/serious/critical), `online`/`offlineMinutes`, `problems[]`
 (`severity`, `title`, `detail`, `whatIs`, `whatToDo`), `connMode`, `motorHours`… Testi già in italiano.
-- **Interruttore**: `ai_config.diagnostics_enabled` ('true'/'false'), card "Diagnostica remota Evolution" in Training AI,
-  route `app/api/config/diagnostics` (GET loggati, POST admin). Se spento, il tool **non viene registrato**.
+- ⚠️ **Nessun interruttore spegne il tool**: è registrato ogni volta che `STATUS_API_KEY` è configurata
+  (`isDiagnosticsConfigured()`). Decisione del titolare (2026-09-15): la diagnostica va sempre usata come supporto
+  interno alla conversazione, anche quando non viene mostrata al cliente.
+- **Interruttore** (`ai_config.diagnostics_enabled`, card "Diagnostica remota Evolution" in Training AI, route
+  `app/api/config/diagnostics` GET loggati/POST admin) controlla SOLO `discloseToCustomer`: se il referto tecnico
+  (`problems`, `severity`, `whatIs`…) viene spiegato apertamente al cliente (default, valore assente o `'true'`) o
+  usato esclusivamente per guidare domande/verifiche senza esporlo (`'false'`). In entrambi i casi, se si apre un
+  ticket, il **tecnico riceve sempre il referto completo** nel `summary` — la disclosure riguarda solo il cliente.
 - **Chiave**: env `STATUS_API_KEY` (solo server, mai nelle risposte); opz. `STATUS_API_URL`. Senza chiave il tool
-  risponde `{error:'not_configured'}` e l'assistente dice che la diagnostica non è disponibile (la card lo segnala).
+  non viene registrato affatto e l'assistente prosegue con la sola diagnosi guidata (nessun riferimento allo
+  strumento, in nessuna delle due modalità di disclosure).
+- **Anamnesi prima della diagnostica**: il prompt impone di raccogliere prima i sintomi dal cliente (da quando,
+  in che condizioni, codici a display…) e SOLO dopo chiamare `stato_macchina`; il risultato va poi incrociato con
+  quanto riferito dal cliente (sintomo+problema rilevato coincidono → conferma; nulla rilevato ma sintomo reale →
+  continua la diagnosi guidata classica, non liquidare; problema rilevato non riferito → tienine conto comunque).
 - **Logica** in `lib/diagnostics.ts`: `fetchMachineStatus` (timeout 15s, retry su 500, 404 = `found:false` passato
-  tale e quale, 401 = errore di configurazione interno), `diagnosticsPrompt` (istruzioni condensate dal documento
-  del titolare), `STATO_MACCHINA_TOOL`. Il seriale arriva dal modulo iniziale (`customerInfo.machineSerial`, solo cifre).
-- **Comportamento richiesto**: alla prima segnalazione l'assistente chiama il tool UNA volta; problemi risolvibili dal
-  cliente → guida passo passo; `serious`/`critical` o che richiedono un tecnico → comunica "dalla diagnostica risulta
-  un'anomalia" e apre il ticket (`escalate_to_technician`) con riga "Diagnostica remota: …" nel summary e priorità
-  critical→urgent, serious→high.
+  tale e quale, 401 = errore di configurazione interno), `diagnosticsPrompt(serialHint, model, discloseFull)`,
+  `shouldDiscloseToCustomer()`, `STATO_MACCHINA_TOOL`. Il seriale arriva dal modulo iniziale
+  (`customerInfo.machineSerial`, solo cifre).
+- **Comportamento**: problemi risolvibili dal cliente → guida passo passo (se `discloseFull`, spiegando il perché;
+  se no, con domande/verifiche mirate senza nominare la diagnostica); `serious`/`critical` o che richiedono un
+  tecnico → apre il ticket (`escalate_to_technician`) con riga "Diagnostica remota: …" **sempre** nel summary
+  (a prescindere da `discloseFull`) e priorità critical→urgent, serious→high.
 - **La chat route è un ciclo agentico** (max 4 giri): stream → se `tool_use` di `stato_macchina` esegue e continua
-  con `tool_result`; `escalate_to_technician` resta **terminale** (come prima). Evento SSE `status` = indicatore
-  transitorio lato client (non persistito). L'output del tool è trattato come dato non fidato nel prompt.
+  con `tool_result` (con separatore di testo tra un giro e l'altro); `escalate_to_technician` resta **terminale**.
+  Evento SSE `status` = indicatore transitorio lato client (non persistito). L'output del tool è trattato come
+  dato non fidato nel prompt.
 
 ## Pattern critici — leggere sempre prima di toccare le API routes
 
