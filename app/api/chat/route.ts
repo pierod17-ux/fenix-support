@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createServiceClient } from '@/lib/supabase/server'
 import { NextRequest } from 'next/server'
+import { STATO_MACCHINA_TOOL, diagnosticsPrompt, digitsOnly, fetchMachineStatus, isDiagnosticsEnabled } from '@/lib/diagnostics'
 
 function getAnthropic() {
   return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? 'placeholder' })
@@ -129,61 +130,81 @@ export async function POST(req: NextRequest) {
   }
 
   const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')
-  const [systemPrompt, ragContext] = await Promise.all([
+  const supabase = await createServiceClient()
+  const [systemPrompt, ragContext, diagnosticsOn] = await Promise.all([
     buildSystemPrompt(),
     lastUserMsg ? retrieveContext(lastUserMsg.content) : Promise.resolve(''),
+    isDiagnosticsEnabled(supabase),
   ])
 
-  const stream = await getAnthropic().messages.stream({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
-    system: systemPrompt + ragContext,
-    messages,
-    tools: [{
-      name: 'escalate_to_technician',
-      description: 'Esegui l\'escalation al tecnico umano quando il problema non può essere risolto dall\'AI.',
-      input_schema: {
-        type: 'object' as const,
-        properties: {
-          subject: { type: 'string', description: 'Titolo breve del problema (max 80 caratteri)' },
-          summary: { type: 'string', description: 'Riepilogo: problema, cosa tentato, stato attuale' },
-          priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'], description: 'Urgenza' },
-          category: {
-            type: 'string',
-            enum: ['hardware', 'PC', 'software', 'firmware', 'meccanica'],
-            description: 'Classifica la tipologia del problema: ' +
-              '"hardware" = malfunzionamento delle schede elettroniche (escluso il PC); ' +
-              '"PC" = malfunzionamento del computer a bordo della macchina; ' +
-              '"software" = problema del sistema operativo o del software del PC; ' +
-              '"firmware" = malfunzionamento del firmware delle schede elettroniche; ' +
-              '"meccanica" = problema meccanico del prodotto (contenitore, rotture di parti meccaniche, ecc.).',
-          },
+  const serialHint = digitsOnly(customerInfo?.machineSerial)
+  const system = systemPrompt + ragContext +
+    (diagnosticsOn ? diagnosticsPrompt(serialHint, customerInfo?.machineModel ?? null) : '')
+
+  const escalateTool = {
+    name: 'escalate_to_technician',
+    description: 'Esegui l\'escalation al tecnico umano quando il problema non può essere risolto dall\'AI.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        subject: { type: 'string', description: 'Titolo breve del problema (max 80 caratteri)' },
+        summary: { type: 'string', description: 'Riepilogo: problema, cosa tentato, stato attuale' },
+        priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'], description: 'Urgenza' },
+        category: {
+          type: 'string',
+          enum: ['hardware', 'PC', 'software', 'firmware', 'meccanica'],
+          description: 'Classifica la tipologia del problema: ' +
+            '"hardware" = malfunzionamento delle schede elettroniche (escluso il PC); ' +
+            '"PC" = malfunzionamento del computer a bordo della macchina; ' +
+            '"software" = problema del sistema operativo o del software del PC; ' +
+            '"firmware" = malfunzionamento del firmware delle schede elettroniche; ' +
+            '"meccanica" = problema meccanico del prodotto (contenitore, rotture di parti meccaniche, ecc.).',
         },
-        required: ['subject', 'summary', 'priority', 'category'],
       },
-    }],
-  })
+      required: ['subject', 'summary', 'priority', 'category'],
+    },
+  }
+  // Il tool di diagnostica esiste solo se l'admin ha abilitato la funzione
+  const tools = diagnosticsOn ? [escalateTool, STATO_MACCHINA_TOOL] : [escalateTool]
 
   const encoder = new TextEncoder()
   const readable = new ReadableStream({
     async start(controller) {
+      const send = (obj: unknown) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`))
       let fullText = ''
-      for await (const event of stream) {
-        if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-          fullText += event.delta.text
-          controller.enqueue(encoder.encode(
-            `data: ${JSON.stringify({ type: 'text', text: event.delta.text })}\n\n`
-          ))
-        }
-        if (event.type === 'message_stop') {
-          const finalMsg = await stream.finalMessage()
+      // Conversazione che cresce con i turni tool_use → tool_result
+      const convo: Anthropic.MessageParam[] = [...messages]
+      let diagnosticsCalls = 0
 
-          // Log usage
+      try {
+        // Ciclo agentico: al massimo 4 giri. L'escalation e' terminale (come
+        // prima); la diagnostica restituisce un tool_result e il modello continua.
+        for (let round = 0; round < 4; round++) {
+          const stream = getAnthropic().messages.stream({
+            model: 'claude-sonnet-4-6',
+            max_tokens: 1024,
+            system,
+            messages: convo,
+            tools,
+          })
+
+          for await (const event of stream) {
+            if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+              fullText += event.delta.text
+              send({ type: 'text', text: event.delta.text })
+            }
+          }
+          const finalMsg = await stream.finalMessage()
           await logUsage(finalMsg.usage.input_tokens, finalMsg.usage.output_tokens, ticketId)
 
-          const toolUse = finalMsg.content.find(b => b.type === 'tool_use')
-          if (toolUse && toolUse.type === 'tool_use' && toolUse.name === 'escalate_to_technician') {
-            const input = toolUse.input as { subject: string; summary: string; priority: string; category?: string }
+          const toolUses = finalMsg.content.filter(
+            (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use'
+          )
+          if (toolUses.length === 0) break
+
+          const escalate = toolUses.find(t => t.name === 'escalate_to_technician')
+          if (escalate) {
+            const input = escalate.input as { subject: string; summary: string; priority: string; category?: string }
             try {
               const escRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/escalate`, {
                 method: 'POST',
@@ -191,17 +212,36 @@ export async function POST(req: NextRequest) {
                 body: JSON.stringify({ ticketId, customerInfo, subject: input.subject, aiSummary: input.summary, priority: input.priority, category: input.category }),
               })
               const escData = await escRes.json()
-              controller.enqueue(encoder.encode(
-                `data: ${JSON.stringify({ type: 'escalation', ticketId: escData.ticketId, onCall: escData.onCall, onCallCount: escData.onCallCount })}\n\n`
-              ))
+              send({ type: 'escalation', ticketId: escData.ticketId, onCall: escData.onCall, onCallCount: escData.onCallCount })
             } catch (err) { console.error('Escalation failed:', err) }
+            break
           }
+
+          const results: Anthropic.ToolResultBlockParam[] = []
+          for (const tu of toolUses) {
+            if (tu.name === 'stato_macchina') {
+              diagnosticsCalls++
+              send({ type: 'status', text: 'Consulto la diagnostica della macchina…' })
+              const input = tu.input as { serial?: string | number }
+              const serial = digitsOnly(input.serial) || serialHint
+              const result = diagnosticsCalls > 2
+                ? { error: 'too_many_calls', note: 'Hai già interrogato la diagnostica: usa i dati che hai.' }
+                : await fetchMachineStatus(serial)
+              results.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(result) })
+            } else {
+              results.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify({ error: 'unknown_tool' }), is_error: true })
+            }
+          }
+          convo.push({ role: 'assistant', content: finalMsg.content })
+          convo.push({ role: 'user', content: results })
         }
+      } catch (err) {
+        console.error('[CHAT] stream error:', err)
+        send({ type: 'text', text: '\n\nMi scuso, si è verificato un problema tecnico. Riprova tra qualche istante.' })
       }
 
       if (ticketId && fullText) {
         try {
-          const supabase = await createServiceClient()
           await supabase.from('ticket_messages').insert({ ticket_id: ticketId, role: 'assistant', content: fullText })
         } catch { /* non bloccare */ }
       }

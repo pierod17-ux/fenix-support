@@ -52,6 +52,25 @@ Logica in `lib/direct-chat.ts` (`getOnCallTechnicians`, `resolveChatToken`, `cla
 - Token: l'`access_token` della chat serve al **cliente** (solo GET/polling) e ai vecchi link; solo i token di
   `direct_chat_invites` identificano un tecnico e permettono di scrivere (`POST /api/direct-chat/[token]`).
 
+## Diagnostica remota Evolution (tool `stato_macchina`) — abilitabile dall'admin
+Servizio esterno `damtec-mysql-analyzer` (`GET /api/machine/status?serial=…`, header `Authorization: Bearer STATUS_API_KEY`):
+dato il seriale restituisce `summary`, `status` (ok/warning/serious/critical), `online`/`offlineMinutes`, `problems[]`
+(`severity`, `title`, `detail`, `whatIs`, `whatToDo`), `connMode`, `motorHours`… Testi già in italiano.
+- **Interruttore**: `ai_config.diagnostics_enabled` ('true'/'false'), card "Diagnostica remota Evolution" in Training AI,
+  route `app/api/config/diagnostics` (GET loggati, POST admin). Se spento, il tool **non viene registrato**.
+- **Chiave**: env `STATUS_API_KEY` (solo server, mai nelle risposte); opz. `STATUS_API_URL`. Senza chiave il tool
+  risponde `{error:'not_configured'}` e l'assistente dice che la diagnostica non è disponibile (la card lo segnala).
+- **Logica** in `lib/diagnostics.ts`: `fetchMachineStatus` (timeout 15s, retry su 500, 404 = `found:false` passato
+  tale e quale, 401 = errore di configurazione interno), `diagnosticsPrompt` (istruzioni condensate dal documento
+  del titolare), `STATO_MACCHINA_TOOL`. Il seriale arriva dal modulo iniziale (`customerInfo.machineSerial`, solo cifre).
+- **Comportamento richiesto**: alla prima segnalazione l'assistente chiama il tool UNA volta; problemi risolvibili dal
+  cliente → guida passo passo; `serious`/`critical` o che richiedono un tecnico → comunica "dalla diagnostica risulta
+  un'anomalia" e apre il ticket (`escalate_to_technician`) con riga "Diagnostica remota: …" nel summary e priorità
+  critical→urgent, serious→high.
+- **La chat route è un ciclo agentico** (max 4 giri): stream → se `tool_use` di `stato_macchina` esegue e continua
+  con `tool_result`; `escalate_to_technician` resta **terminale** (come prima). Evento SSE `status` = indicatore
+  transitorio lato client (non persistito). L'output del tool è trattato come dato non fidato nel prompt.
+
 ## Pattern critici — leggere sempre prima di toccare le API routes
 
 ```
@@ -132,7 +151,7 @@ app/
   login/                   → login admin + "Password dimenticata"
   auth/set-password/       → imposta/reset password via token_hash (invito e recovery)
   api/
-    chat/                  → streaming AI + escalation tool
+    chat/                  → streaming AI a ciclo: tool diagnostica (stato_macchina) + escalation (terminale)
     escalate/              → crea ticket, trova tecnico on-call, invia email
     direct-chat/           → gestione chat diretta tecnico↔cliente
     technicians/           → CRUD tecnici + inviti + reset password
@@ -140,6 +159,7 @@ app/
     config/
       import-document/     → analizza un file e PROPONE regole/contesti (admin, non scrive)
       check-conflicts/     → segnala contraddizioni/duplicati tra regole candidate ed esistenti (admin)
+      diagnostics/         → GET/POST interruttore diagnostica remota (POST admin)
       contexts/            → GET/POST system_contexts (multi-sezione)
       rules/               → GET/POST behavior_rules
       cost-limit/          → GET/POST cost_limit_usd
@@ -151,8 +171,10 @@ components/
     SystemContextsEditor.tsx → editor multi-sezione contesti AI
     AIRulesEditor.tsx      → regole comportamento per categoria
     AICostTracker.tsx      → monitoraggio costi mensili
+    DiagnosticsToggle.tsx  → interruttore diagnostica remota + stato chiave
     ImportFromDocument.tsx → revisione/applicazione delle regole proposte da un documento
 lib/
+  diagnostics.ts           → fetchMachineStatus(), tool stato_macchina, prompt diagnostica
   direct-chat.ts           → tecnici di turno, risoluzione token (invito/cliente), presa in carico atomica
   format.ts                → formatInt(): numeri deterministici (mai toLocaleString nei render)
   supabase/server.ts       → createClient() e createServiceClient()
@@ -173,7 +195,7 @@ supabase/
 | `technician_schedules` | Turni settimanali reperibilità |
 | `direct_chats` | Chat diretta: access_token (cliente), technician_id NULL finché non presa in carico, claimed_at |
 | `direct_chat_invites` | Invito personale per tecnico di turno (token): il primo che lo apre prende in carico la chat |
-| `ai_config` | Config AI key/value: system_contexts, behavior_rules, cost_limit_usd |
+| `ai_config` | Config AI key/value: system_contexts, behavior_rules, cost_limit_usd, diagnostics_enabled |
 | `ai_usage_log` | Log token e costi |
 | `knowledge_chunks` | Documenti indicizzati per RAG |
 | `on_call_notifications` | Dedup invii mail reperibilità (schedule_id, kind, for_date) |
@@ -198,6 +220,7 @@ supabase/
 - ✅ Importa regole/contesti da documento con revisione umana (vedi sezione dedicata)
 - ✅ Controllo conflitti tra regole (import e aggiunta manuale): segnala, non blocca
 - ✅ RAG su knowledge base (documenti + ticket risolti)
+- ✅ Diagnostica remota Evolution dal seriale (tool `stato_macchina`), abilitabile dall'admin
 
 ## Automazioni infra
 - **pg_cron** job `on-call-check` (ogni minuto) → POST `/api/cron/on-call` con header `x-cron-secret` (env `CRON_SECRET`). Dedup in `on_call_notifications`. Ora in Europe/Rome.
@@ -209,6 +232,7 @@ Template in `.env.local.example`. Le chiavi reali sono nel file `.env.local`
 - **Runtime (produzione)**: le env sono su **Netlify** (site `ee5d6db8-...`), già ripuntate al nuovo
   progetto Supabase. Cambiano solo le 3 Supabase (`NEXT_PUBLIC_SUPABASE_URL`,
   `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`); Resend/Anthropic/WhatsApp/`CRON_SECRET` invariate.
+- `STATUS_API_KEY` (diagnostica remota): va impostata su Netlify + redeploy; opzionale finché la funzione è spenta.
 - ⚠️ **`.env.local` locale**: dopo la migrazione va aggiornato con URL + chiavi del nuovo progetto
   `zrjskqqngaijloamiros` (il vecchio progetto è stato eliminato → le vecchie chiavi non funzionano più).
 
