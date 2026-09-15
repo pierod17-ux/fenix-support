@@ -322,6 +322,31 @@ VALUES ('chat-media', 'chat-media', true, 52428800,
   ARRAY['image/jpeg','image/png','image/gif','image/webp','video/mp4','video/quicktime','video/webm'])
 ON CONFLICT (id) DO NOTHING;
 
+
+-- ---------- POLICY RLS SUI BUCKET ----------
+-- /api/knowledge/upload e /api/knowledge/[id] scrivono su 'knowledge-documents'
+-- con la SESSIONE UTENTE (createClient), non col service role: senza queste
+-- policy l'upload fallisce con "new row violates row-level security policy".
+-- 'chat-media' non ha policy di proposito: ci scrive solo il service role,
+-- che bypassa la RLS.
+DROP POLICY IF EXISTS "KB docs lettura autenticati" ON storage.objects;
+CREATE POLICY "KB docs lettura autenticati" ON storage.objects
+  FOR SELECT TO authenticated USING (bucket_id = 'knowledge-documents');
+
+DROP POLICY IF EXISTS "KB docs upload autenticati" ON storage.objects;
+CREATE POLICY "KB docs upload autenticati" ON storage.objects
+  FOR INSERT TO authenticated WITH CHECK (bucket_id = 'knowledge-documents');
+
+DROP POLICY IF EXISTS "KB docs update autenticati" ON storage.objects;
+CREATE POLICY "KB docs update autenticati" ON storage.objects
+  FOR UPDATE TO authenticated
+  USING (bucket_id = 'knowledge-documents')
+  WITH CHECK (bucket_id = 'knowledge-documents');
+
+DROP POLICY IF EXISTS "KB docs eliminazione autenticati" ON storage.objects;
+CREATE POLICY "KB docs eliminazione autenticati" ON storage.objects
+  FOR DELETE TO authenticated USING (bucket_id = 'knowledge-documents');
+
 -- ============================================================
 -- CRON — controllo reperibilità ogni minuto
 -- ATTENZIONE: sostituisci <CRON_SECRET> con il valore di env CRON_SECRET.
