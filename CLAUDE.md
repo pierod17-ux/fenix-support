@@ -32,9 +32,25 @@ Cliente: Fenix / Damtec. Admin: Piero D'Amico (pierod17@gmail.com).
 ## Flusso principale
 1. Cliente apre `/chat` → form info → chat streaming AI
 2. AI diagnostica con RAG su `knowledge_chunks`
-3. Se non risolve → tool `escalate_to_technician` → ticket + email tecnico
-4. Tecnico apre chat diretta con cliente via link `/tech/[token]`
+3. Se non risolve → tool `escalate_to_technician` → `/api/escalate` → ticket + avvisi (vedi sotto)
+4. Se c'è almeno un tecnico di turno il cliente può aprire la chat diretta; il tecnico entra via link `/tech/[token]`
 5. Admin gestisce tutto da `/admin` (login Supabase Auth)
+
+## Escalation e chat diretta — regole di turno (decise dal titolare, 2026-09-15)
+Logica in `lib/direct-chat.ts` (`getOnCallTechnicians`, `resolveChatToken`, `claimChat`).
+- **Nessun tecnico di turno**: `/api/escalate` avvisa via email **tutti** i tecnici attivi (admin inclusi) con la
+  variante "ticket aperto, nessun tecnico di turno" (niente WhatsApp); l'evento SSE porta `onCall: false`,
+  il cliente vede "verrai ricontattato" e **non** ha il bottone chat diretta. `/api/direct-chat` in ogni caso
+  risponde **409** `{ noTechnicianOnCall: true }`: la chat non viene mai aperta senza reperibili.
+- **Uno o più di turno**: la chat nasce con `technician_id NULL`; per ogni tecnico di turno viene creato un
+  invito personale in `direct_chat_invites` (token proprio) e inviata l'email col link `/tech/<invite token>`.
+  **Il primo che apre il link la prende in carico** (`claimChat`: `UPDATE … WHERE technician_id IS NULL`,
+  atomico → un solo vincitore anche in caso di apertura simultanea) → `assigned_to` + `status in_progress`,
+  `claimed_at`, email "presa in carico da X" agli altri invitati (`sendChatClaimedEmail`). Chi arriva dopo
+  vede la pagina "Presa in carico da X"; un suo POST riceve 403. Il cliente, in polling, vede "X ha preso in
+  carico la tua richiesta". Se il ticket era già `assigned_to` un tecnico di turno, l'invito va solo a lui.
+- Token: l'`access_token` della chat serve al **cliente** (solo GET/polling) e ai vecchi link; solo i token di
+  `direct_chat_invites` identificano un tecnico e permettono di scrivere (`POST /api/direct-chat/[token]`).
 
 ## Pattern critici — leggere sempre prima di toccare le API routes
 
@@ -137,6 +153,7 @@ components/
     AICostTracker.tsx      → monitoraggio costi mensili
     ImportFromDocument.tsx → revisione/applicazione delle regole proposte da un documento
 lib/
+  direct-chat.ts           → tecnici di turno, risoluzione token (invito/cliente), presa in carico atomica
   format.ts                → formatInt(): numeri deterministici (mai toLocaleString nei render)
   supabase/server.ts       → createClient() e createServiceClient()
   email.ts                 → template email branded (Resend)
@@ -154,7 +171,8 @@ supabase/
 | `support_tickets` | Ticket con stato, priorità, AI summary |
 | `ticket_messages` | Messaggi chat (role: user \| assistant \| technician) |
 | `technician_schedules` | Turni settimanali reperibilità |
-| `direct_chats` | Chat diretta con access_token UUID |
+| `direct_chats` | Chat diretta: access_token (cliente), technician_id NULL finché non presa in carico, claimed_at |
+| `direct_chat_invites` | Invito personale per tecnico di turno (token): il primo che lo apre prende in carico la chat |
 | `ai_config` | Config AI key/value: system_contexts, behavior_rules, cost_limit_usd |
 | `ai_usage_log` | Log token e costi |
 | `knowledge_chunks` | Documenti indicizzati per RAG |
@@ -174,6 +192,7 @@ supabase/
 - ✅ Sessione persistente: `middleware.ts` rinnova token ad ogni richiesta
 - ✅ Eliminazione ticket (admin-only, cascade)
 - ✅ Chat diretta tecnico↔cliente con media upload (bucket: `chat-media`)
+- ✅ Presa in carico "primo che si collega" tra i tecnici di turno; nessuna chat se nessuno è di turno (vedi sezione Escalation)
 - ✅ Email branded da `sensor-smart@damtec.net`: invito, reset pwd, chat diretta, reperibilità
 - ✅ Training AI: contesti multi-sezione, regole comportamento, monitoraggio costi
 - ✅ Importa regole/contesti da documento con revisione umana (vedi sezione dedicata)

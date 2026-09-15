@@ -159,8 +159,10 @@ export async function sendDirectChatEmail(params: {
   machineName: string
   subject: string
   aiSummary: string
+  // numero di tecnici di turno invitati: se > 1, il primo che apre la chat la prende in carico
+  onCallCount?: number
 }) {
-  const { to, technicianName, chatUrl, customerName, customerEmail, customerPhone, machineName, subject, aiSummary } = params
+  const { to, technicianName, chatUrl, customerName, customerEmail, customerPhone, machineName, subject, aiSummary, onCallCount = 1 } = params
   const html = `
 <!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>
@@ -186,8 +188,12 @@ export async function sendDirectChatEmail(params: {
         <p style="color:#0071e3;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Riepilogo AI</p>
         <p style="color:#1d1d1f;font-size:13px;line-height:1.6;margin:0;">${aiSummary}</p>
       </div>` : ''}
+      ${onCallCount > 1 ? `
+      <div style="background:#fff8e6;border-radius:12px;padding:14px 16px;margin-bottom:20px;border-left:3px solid #ff9500;">
+        <p style="color:#8a5a00;font-size:13px;line-height:1.5;margin:0;">Siete <strong>${onCallCount} tecnici di turno</strong>: il primo che apre la chat la prende in carico, gli altri riceveranno un avviso. Questo link è personale.</p>
+      </div>` : ''}
       <a href="${chatUrl}" style="display:inline-block;background:#0071e3;color:white;padding:14px 28px;border-radius:12px;text-decoration:none;font-weight:600;font-size:15px;box-shadow:0 4px 12px rgba(0,113,227,0.3);">
-        Apri chat con il cliente →
+        ${onCallCount > 1 ? 'Prendi in carico e apri la chat →' : 'Apri chat con il cliente →'}
       </a>
     </div>
     <div style="padding:16px 32px;border-top:1px solid #f2f2f2;">
@@ -218,10 +224,13 @@ export async function sendEscalationEmail(params: {
   priority: string
   aiSummary: string
   portalUrl: string
+  // true = nessun tecnico di turno: il ticket e' stato aperto ma NON c'e'
+  // una chat diretta in attesa; l'avviso va a tutti i tecnici.
+  noOneOnCall?: boolean
 }) {
   const {
     to, technicianName, ticketId, customerName, customerEmail,
-    customerPhone, machineName, subject, priority, aiSummary, portalUrl
+    customerPhone, machineName, subject, priority, aiSummary, portalUrl, noOneOnCall = false,
   } = params
 
   const priorityColor = priority === 'urgent' ? '#ef4444' : priority === 'high' ? '#f59e0b' : '#6c63ff'
@@ -238,13 +247,17 @@ export async function sendEscalationEmail(params: {
       </div>
       <div>
         <p style="color: #f0f0f5; font-weight: 700; margin: 0; font-size: 16px;">Fenix — Assistenza Tecnica</p>
-        <p style="color: #8888aa; margin: 0; font-size: 12px;">Notifica di escalation</p>
+        <p style="color: #8888aa; margin: 0; font-size: 12px;">${noOneOnCall ? 'Ticket aperto — nessun tecnico di turno' : 'Notifica di escalation'}</p>
       </div>
     </div>
 
     <div style="padding: 32px;">
       <p style="color: #333; margin-bottom: 8px;">Ciao <strong>${technicianName}</strong>,</p>
-      <p style="color: #555; margin-bottom: 24px;">Un cliente ha bisogno di assistenza tecnica che l'AI non ha potuto risolvere autonomamente.</p>
+      <p style="color: #555; margin-bottom: ${noOneOnCall ? '12px' : '24px'};">Un cliente ha bisogno di assistenza tecnica che l'AI non ha potuto risolvere autonomamente.</p>
+      ${noOneOnCall ? `
+      <div style="background: #fff4e5; border-radius: 8px; padding: 14px 16px; margin-bottom: 24px; border-left: 4px solid #f59e0b;">
+        <p style="color: #92400e; font-size: 13px; line-height: 1.5; margin: 0;"><strong>In questo momento nessun tecnico è di turno.</strong> Il ticket è stato aperto e il cliente è stato informato che verrà ricontattato: non è stata avviata alcuna chat diretta. Questo avviso è stato inviato a tutti i tecnici — chi può, lo prenda in carico dal portale.</p>
+      </div>` : ''}
 
       <div style="background: #f8f8fc; border-radius: 8px; padding: 20px; margin-bottom: 24px; border-left: 4px solid ${priorityColor};">
         <table style="width: 100%; border-collapse: collapse;">
@@ -282,6 +295,52 @@ export async function sendEscalationEmail(params: {
     to,
     subject: `[Ticket #${ticketId.slice(0, 8).toUpperCase()}] ${subject} — ${priority.toUpperCase()}`,
     html,
+  })
+  if (result.error) throw new Error(`Resend: ${result.error.message}`)
+  return result
+}
+
+// Avviso agli altri tecnici di turno: la chat e' stata presa in carico da un collega.
+export async function sendChatClaimedEmail(params: {
+  to: string
+  technicianName: string
+  claimerName: string
+  customerName: string
+  machineName: string
+  subject: string
+  ticketUrl: string
+}) {
+  const { to, technicianName, claimerName, customerName, machineName, subject, ticketUrl } = params
+  const html = `
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="font-family:-apple-system,sans-serif;background:#f5f5f7;margin:0;padding:20px;">
+  <div style="max-width:560px;margin:0 auto;background:white;border-radius:18px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+    <div style="background:linear-gradient(135deg,#34c759 0%,#30b0c7 100%);padding:28px 32px;">
+      <p style="color:white;font-weight:700;font-size:20px;margin:0;">✅ Richiesta presa in carico</p>
+      <p style="color:rgba(255,255,255,0.85);font-size:13px;margin:4px 0 0;">Non serve che intervenga tu</p>
+    </div>
+    <div style="padding:32px;">
+      <p style="color:#1d1d1f;font-size:15px;margin-bottom:16px;">Ciao <strong>${technicianName}</strong>,</p>
+      <p style="color:#1d1d1f;font-size:14px;line-height:1.6;margin-bottom:20px;">la chat diretta con <strong>${customerName}</strong> è stata presa in carico da <strong>${claimerName}</strong>. Questo avviso è solo per informazione: puoi ignorarlo.</p>
+      <div style="background:#f5f5f7;border-radius:12px;padding:16px 20px;margin-bottom:24px;">
+        <table style="width:100%;border-collapse:collapse;">
+          <tr><td style="color:#6e6e73;font-size:12px;padding:4px 0;width:110px;">Macchina</td><td style="color:#1d1d1f;font-size:13px;">${machineName}</td></tr>
+          <tr><td style="color:#6e6e73;font-size:12px;padding:4px 0;">Problema</td><td style="color:#1d1d1f;font-size:13px;">${subject}</td></tr>
+          <tr><td style="color:#6e6e73;font-size:12px;padding:4px 0;">Gestita da</td><td style="color:#1d1d1f;font-size:13px;font-weight:600;">${claimerName}</td></tr>
+        </table>
+      </div>
+      <a href="${ticketUrl}" style="display:inline-block;background:#f5f5f7;color:#1d1d1f;padding:12px 22px;border-radius:12px;text-decoration:none;font-weight:600;font-size:14px;">
+        Vedi il ticket nel portale →
+      </a>
+    </div>
+    <div style="padding:16px 32px;border-top:1px solid #f2f2f2;">
+      <p style="color:#aeaeb2;font-size:11px;margin:0;">Sistema Assistenza Tecnica Fenix · Notifica automatica</p>
+    </div>
+  </div>
+</body></html>`
+  const result = await getResend().emails.send({
+    from: FROM, to, subject: `[Presa in carico da ${claimerName}] ${customerName} — ${machineName}`, html,
   })
   if (result.error) throw new Error(`Resend: ${result.error.message}`)
   return result

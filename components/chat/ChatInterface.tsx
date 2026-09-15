@@ -36,6 +36,11 @@ export default function ChatInterface() {
   const [loading, setLoading] = useState(false)
   const [ticketId, setTicketId] = useState<string | null>(null)
   const [escalated, setEscalated] = useState(false)
+  // false = nessun tecnico di turno al momento dell'escalation: niente chat diretta
+  const [onCall, setOnCall] = useState(true)
+  const [onCallCount, setOnCallCount] = useState<number | null>(null)
+  // id del tecnico gia' annunciato al cliente ("X ha preso in carico")
+  const announcedTechRef = useRef<string | null>(null)
   const [directChatActive, setDirectChatActive] = useState(false)
   const [directChatToken, setDirectChatToken] = useState<string | null>(null)
   const [streamingText, setStreamingText] = useState('')
@@ -58,6 +63,16 @@ export default function ChatInterface() {
         const res = await fetch(`/api/direct-chat/${directChatToken}`)
         if (!res.ok) return
         const data = await res.json()
+        // Un tecnico ha preso in carico la chat: dillo al cliente (una volta sola)
+        const claimerId: string | null = data.chat?.technician_id ?? null
+        const claimerName: string | null = data.technician?.display_name ?? null
+        if (claimerId && claimerName && announcedTechRef.current !== claimerId) {
+          announcedTechRef.current = claimerId
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: `👨‍🔧 ${claimerName} ha preso in carico la tua richiesta e ti risponderà qui in chat.`,
+          }])
+        }
         const techMsgs: { role: string; content: string | null; media_url: string | null; media_type: string | null }[] = (data.messages ?? [])
           .filter((m: { role: string }) => m.role === 'technician')
         if (techMsgs.length > 0) {
@@ -88,13 +103,24 @@ export default function ChatInterface() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ticketId }),
       })
+      if (res.status === 409) {
+        // Nessun tecnico di turno: la chat non viene aperta, il ticket resta aperto
+        setOnCall(false)
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: 'ℹ️ In questo momento nessun tecnico è di turno, quindi non posso aprire una chat diretta. Il ticket è aperto e tutti i tecnici sono stati avvisati: verrai ricontattato al più presto.',
+        }])
+        return
+      }
       if (res.ok) {
-        const { accessToken } = await res.json()
+        const { accessToken, onCallCount: n } = await res.json()
         setDirectChatToken(accessToken)
         setDirectChatActive(true)
         setMessages(prev => [...prev, {
           role: 'assistant',
-          content: '✅ Chat diretta aperta! Il tecnico di turno è stato notificato e si unirà a breve.',
+          content: n && n > 1
+            ? `✅ Chat diretta aperta! I ${n} tecnici di turno sono stati avvisati: il primo disponibile si unirà a breve.`
+            : '✅ Chat diretta aperta! Il tecnico di turno è stato avvisato e si unirà a breve.',
         }])
       }
     } catch { /* ignore */ }
@@ -204,6 +230,8 @@ export default function ChatInterface() {
               setStreamingText(accText)
             } else if (parsed.type === 'escalation') {
               if (parsed.ticketId) setTicketId(parsed.ticketId)
+              if (typeof parsed.onCall === 'boolean') setOnCall(parsed.onCall)
+              if (typeof parsed.onCallCount === 'number') setOnCallCount(parsed.onCallCount)
               setEscalated(true)
             }
           } catch { /* partial JSON */ }
@@ -397,6 +425,8 @@ export default function ChatInterface() {
             ticketId={ticketId}
             onRequestChat={requestDirectChat}
             directChatActive={directChatActive}
+            onCall={onCall}
+            onCallCount={onCallCount}
           />
         )}
 
@@ -613,12 +643,15 @@ function Bubble({ role, content, mediaUrl, mediaType, streaming }: {
 }
 
 function EscalationCard({
-  ticketId, onRequestChat, directChatActive,
+  ticketId, onRequestChat, directChatActive, onCall, onCallCount,
 }: {
   ticketId: string | null
   onRequestChat: () => void
   directChatActive: boolean
+  onCall: boolean
+  onCallCount: number | null
 }) {
+  const many = (onCallCount ?? 0) > 1
   return (
     <div style={{
       background: 'var(--surface)', borderRadius: 16,
@@ -638,10 +671,14 @@ function EscalationCard({
         </svg>
       </div>
       <h3 style={{ fontWeight: 600, fontSize: 16, color: 'var(--text-primary)', marginBottom: 6 }}>
-        Tecnico notificato
+        {onCall ? (many ? 'Tecnici notificati' : 'Tecnico notificato') : 'Richiesta registrata'}
       </h3>
       <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 16 }}>
-        Il tecnico di turno è stato avvisato e ti ricontatterà al più presto.
+        {onCall
+          ? (many
+            ? `I ${onCallCount} tecnici di turno sono stati avvisati: il primo disponibile ti ricontatterà al più presto.`
+            : 'Il tecnico di turno è stato avvisato e ti ricontatterà al più presto.')
+          : 'In questo momento nessun tecnico è di turno. Il ticket è stato aperto e tutti i tecnici sono stati avvisati: verrai ricontattato al più presto.'}
       </p>
       {ticketId && (
         <span style={{
@@ -652,7 +689,7 @@ function EscalationCard({
           Ticket #{ticketId.slice(0, 8).toUpperCase()}
         </span>
       )}
-      {!directChatActive && (
+      {!directChatActive && onCall && (
         <div style={{ marginTop: 16 }}>
           <button onClick={onRequestChat} style={{
             padding: '10px 22px', borderRadius: 20, border: 'none', cursor: 'pointer',
@@ -663,7 +700,7 @@ function EscalationCard({
             Apri chat diretta con il tecnico
           </button>
           <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 8 }}>
-            Il tecnico riceverà un link per connettersi alla chat
+            {many ? 'I tecnici di turno riceveranno un link: il primo che si collega gestirà la chat' : 'Il tecnico riceverà un link per connettersi alla chat'}
           </p>
         </div>
       )}
