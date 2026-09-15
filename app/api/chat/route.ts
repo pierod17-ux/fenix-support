@@ -179,7 +179,12 @@ export async function POST(req: NextRequest) {
       try {
         // Ciclo agentico: al massimo 4 giri. L'escalation e' terminale (come
         // prima); la diagnostica restituisce un tool_result e il modello continua.
+        let prevRoundHadText = false
         for (let round = 0; round < 4; round++) {
+          // Se il giro precedente aveva gia' prodotto testo (es. "Controllo subito..."),
+          // separa la continuazione: altrimenti le due parti si attaccano.
+          if (prevRoundHadText) { fullText += '\n\n'; send({ type: 'text', text: '\n\n' }) }
+          const lenBefore = fullText.length
           const stream = getAnthropic().messages.stream({
             model: 'claude-sonnet-4-6',
             max_tokens: 1024,
@@ -196,6 +201,7 @@ export async function POST(req: NextRequest) {
           }
           const finalMsg = await stream.finalMessage()
           await logUsage(finalMsg.usage.input_tokens, finalMsg.usage.output_tokens, ticketId)
+          prevRoundHadText = fullText.length > lenBefore
 
           const toolUses = finalMsg.content.filter(
             (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use'
