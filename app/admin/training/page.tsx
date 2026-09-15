@@ -4,6 +4,7 @@ import TicketToKnowledge from '@/components/admin/TicketToKnowledge'
 import AIRulesEditor from '@/components/admin/AIRulesEditor'
 import AICostTracker from '@/components/admin/AICostTracker'
 import DocumentUpload from '@/components/admin/DocumentUpload'
+import ImportFromDocument from '@/components/admin/ImportFromDocument'
 
 export default async function TrainingPage() {
   const supabase = await createClient()
@@ -86,6 +87,9 @@ export default async function TrainingPage() {
 
         {/* System contexts — multiple sections merged for AI */}
         <SystemContextsEditor initialContexts={contexts} />
+
+        {/* Importa regole/contesti da un file: l'AI propone, l'admin conferma */}
+        <ImportFromDocument currentRules={rules} currentContexts={contexts} />
 
         {/* Document upload */}
         <div style={{ background: 'var(--surface)', borderRadius: 20, boxShadow: 'var(--shadow-md)', overflow: 'hidden' }}>
