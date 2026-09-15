@@ -27,6 +27,12 @@ export default function AIRulesEditor({ initialRules }: { initialRules: Rule[] }
   const [editingId, setEditingId] = useState<string | null>(null)
   const [newCategory, setNewCategory] = useState<Rule['category']>('fare')
   const [newText, setNewText] = useState('')
+  // Controllo conflitti all'aggiunta: segnala contraddizioni/duplicati con le
+  // regole già attive. Solo avviso: l'admin può comunque aggiungere.
+  const [checking, setChecking] = useState(false)
+  const [pendingConflicts, setPendingConflicts] = useState<
+    { kind: 'contradiction' | 'duplicate'; existingText: string; reason: string }[] | null
+  >(null)
 
   async function saveRules(updated: Rule[]) {
     setSaving(true)
@@ -40,12 +46,34 @@ export default function AIRulesEditor({ initialRules }: { initialRules: Rule[] }
     setTimeout(() => setSaved(false), 2000)
   }
 
-  function addRule() {
-    if (!newText.trim()) return
-    const updated = [...rules, { id: crypto.randomUUID(), category: newCategory, text: newText.trim() }]
+  async function addRule(force = false) {
+    const text = newText.trim()
+    if (!text || checking) return
+    if (!force && rules.length > 0) {
+      setChecking(true); setPendingConflicts(null)
+      try {
+        const res = await fetch('/api/config/check-conflicts', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            candidates: [{ category: newCategory, text }],
+            existing: rules.map(r => ({ category: r.category, text: r.text })),
+          }),
+        })
+        if (res.ok) {
+          const d = await res.json()
+          const notes = ((d.conflicts ?? []) as { existingIndex: number; kind: 'contradiction' | 'duplicate'; reason: string }[])
+            .filter(c => rules[c.existingIndex])
+            .map(c => ({ kind: c.kind, existingText: rules[c.existingIndex].text, reason: c.reason }))
+          if (notes.length > 0) { setPendingConflicts(notes); return }
+        }
+        // se il controllo non e' disponibile non blocco: segnalare, non impedire
+      } catch { /* idem */ } finally { setChecking(false) }
+    }
+    const updated = [...rules, { id: crypto.randomUUID(), category: newCategory, text }]
     setRules(updated)
     saveRules(updated)
     setNewText('')
+    setPendingConflicts(null)
     setShowAdd(false)
   }
 
@@ -122,7 +150,7 @@ export default function AIRulesEditor({ initialRules }: { initialRules: Rule[] }
           </div>
           <textarea
             value={newText}
-            onChange={e => setNewText(e.target.value)}
+            onChange={e => { setNewText(e.target.value); setPendingConflicts(null) }}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addRule() } }}
             placeholder="Descrivi la regola... (Invio per salvare)"
             rows={2}
@@ -133,16 +161,46 @@ export default function AIRulesEditor({ initialRules }: { initialRules: Rule[] }
             }}
             autoFocus
           />
-          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-            <button onClick={addRule} disabled={!newText.trim()} style={{
-              padding: '8px 16px', borderRadius: 10, border: 'none', cursor: 'pointer',
-              background: newText.trim() ? 'var(--accent)' : 'var(--surface-3)',
-              color: newText.trim() ? 'white' : 'var(--text-tertiary)',
-              fontSize: 13, fontWeight: 600,
+          {pendingConflicts && (
+            <div style={{
+              marginTop: 10, padding: '10px 12px', borderRadius: 10,
+              background: 'rgba(255,149,0,0.10)', border: '1px solid rgba(255,149,0,0.25)',
+              display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12, lineHeight: 1.45,
             }}>
-              Salva regola
-            </button>
-            <button onClick={() => { setShowAdd(false); setNewText('') }} style={{
+              <p style={{ fontSize: 13, fontWeight: 600, color: '#c77700', margin: 0 }}>
+                ⚠ Questa regola sembra in conflitto con {pendingConflicts.length === 1 ? 'una regola esistente' : `${pendingConflicts.length} regole esistenti`}
+              </p>
+              {pendingConflicts.map((c, i) => (
+                <div key={i} style={{ color: 'var(--text-primary)' }}>
+                  <strong>{c.kind === 'duplicate' ? 'Duplicato' : 'Contraddizione'}</strong>
+                  <span style={{ display: 'block', color: 'var(--text-secondary)' }}>«{c.existingText}»</span>
+                  <span style={{ display: 'block' }}>{c.reason}</span>
+                </div>
+              ))}
+              <p style={{ margin: 0, color: 'var(--text-secondary)' }}>
+                Puoi correggere il testo, oppure aggiungerla comunque.
+              </p>
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            {pendingConflicts ? (
+              <button onClick={() => addRule(true)} style={{
+                padding: '8px 16px', borderRadius: 10, border: 'none', cursor: 'pointer',
+                background: '#ff9500', color: 'white', fontSize: 13, fontWeight: 600,
+              }}>
+                Aggiungi comunque
+              </button>
+            ) : (
+              <button onClick={() => addRule()} disabled={!newText.trim() || checking} style={{
+                padding: '8px 16px', borderRadius: 10, border: 'none', cursor: 'pointer',
+                background: newText.trim() && !checking ? 'var(--accent)' : 'var(--surface-3)',
+                color: newText.trim() && !checking ? 'white' : 'var(--text-tertiary)',
+                fontSize: 13, fontWeight: 600,
+              }}>
+                {checking ? 'Controllo conflitti…' : 'Salva regola'}
+              </button>
+            )}
+            <button onClick={() => { setShowAdd(false); setNewText(''); setPendingConflicts(null) }} style={{
               padding: '8px 16px', borderRadius: 10, border: 'none', cursor: 'pointer',
               background: 'transparent', color: 'var(--text-secondary)', fontSize: 13,
             }}>

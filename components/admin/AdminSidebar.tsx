@@ -3,12 +3,14 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useEffect, useState } from 'react'
 
-const nav = [
+// adminOnly: la voce e' nascosta ai tecnici (la pagina e' comunque protetta lato server)
+const nav: { href: string; label: string; icon: () => React.JSX.Element; adminOnly?: boolean }[] = [
   { href: '/admin', label: 'Ticket', icon: IconTicket },
   { href: '/admin/conversations', label: 'Conversazioni', icon: IconChat },
   { href: '/admin/knowledge', label: 'Knowledge Base', icon: IconBook },
-  { href: '/admin/training', label: 'Training AI', icon: IconBrain },
+  { href: '/admin/training', label: 'Training AI', icon: IconBrain, adminOnly: true },
   { href: '/admin/schedule', label: 'Tecnici e turni', icon: IconClock },
   { href: '/admin/analytics', label: 'Analytics', icon: IconChart },
   { href: '/admin/help', label: 'Aiuto', icon: IconHelp },
@@ -17,13 +19,20 @@ const nav = [
 // Marcatore di build: commit + data del deploy in corso.
 // Sostituisce il vecchio "v1.0.0" hardcoded, che non cambiava mai e non permetteva
 // di capire se il browser stesse servendo l'ultima versione o una copia in cache.
-function buildLabel() {
+// La data viene formattata SOLO dopo il mount: formattarla anche lato server
+// (fuso UTC) produceva un testo diverso da quello del client (fuso locale) e
+// quindi un hydration mismatch (React #418) su ogni pagina admin.
+function BuildLabel() {
   const ref = process.env.NEXT_PUBLIC_BUILD_REF || 'dev'
   const iso = process.env.NEXT_PUBLIC_BUILD_TIME
-  if (!iso) return ref
-  const d = new Date(iso)
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${ref} · ${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`
+  const [when, setWhen] = useState('')
+  useEffect(() => {
+    if (!iso) return
+    const d = new Date(iso)
+    const p = (n: number) => String(n).padStart(2, '0')
+    setWhen(`${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`)
+  }, [iso])
+  return <>{ref}{when ? ` · ${when}` : ''}</>
 }
 
 export default function AdminSidebar({ role, displayName }: { role: string; displayName: string }) {
@@ -35,6 +44,8 @@ export default function AdminSidebar({ role, displayName }: { role: string; disp
     await supabase.auth.signOut()
     router.push('/login')
   }
+
+  const items = nav.filter(i => !i.adminOnly || role === 'admin')
 
   const initials = displayName
     .split(' ')
@@ -86,7 +97,7 @@ export default function AdminSidebar({ role, displayName }: { role: string; disp
 
         {/* Nav */}
         <nav style={{ flex: 1, padding: '4px 8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {nav.map(item => {
+          {items.map(item => {
             const active = pathname === item.href || (item.href !== '/admin' && pathname.startsWith(item.href))
             return (
               <Link key={item.href} href={item.href} style={{
@@ -146,7 +157,7 @@ export default function AdminSidebar({ role, displayName }: { role: string; disp
             Esci
           </button>
           <p style={{ fontSize: 10, color: 'var(--text-tertiary)', opacity: 0.45, marginTop: 8, paddingLeft: 4 }}>
-            Fenix Support · {buildLabel()}
+            Fenix Support · <BuildLabel />
           </p>
         </div>
       </aside>
@@ -163,7 +174,7 @@ export default function AdminSidebar({ role, displayName }: { role: string; disp
       }}
         className="mobile-tab-bar"
       >
-        {nav.slice(0, 5).map(item => {
+        {items.slice(0, 5).map(item => {
           const active = pathname === item.href || (item.href !== '/admin' && pathname.startsWith(item.href))
           return (
             <Link key={item.href} href={item.href} style={{
