@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { formatInt } from '@/lib/format'
 
 export default function PromptEditor({ currentValue }: { currentValue: string }) {
   const [value, setValue] = useState(currentValue)
@@ -61,7 +62,7 @@ export default function PromptEditor({ currentValue }: { currentValue: string })
           onBlur={e => (e.target.style.borderColor = 'var(--border)')}
         />
         <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 8 }}>
-          {value.length.toLocaleString('it-IT')} caratteri · Aggiunto al system prompt di ogni conversazione
+          {formatInt(value.length)} caratteri · Aggiunto al system prompt di ogni conversazione
         </p>
       </div>
     </div>
