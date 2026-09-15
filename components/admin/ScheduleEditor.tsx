@@ -29,6 +29,21 @@ interface Technician {
 // timer in background su mobile). `now` viene da uno stato client (null durante
 // SSR) per evitare mismatch di hydration.
 const ONLINE_WINDOW_MS = 5 * 60 * 1000
+// Marcatore "Admin" per distinguere gli amministratori nelle liste dei turni.
+// `inverted` per i chip selezionati (sfondo blu pieno).
+function AdminMark({ inverted = false }: { inverted?: boolean }) {
+  return (
+    <span style={{
+      fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 20, lineHeight: 1.4,
+      textTransform: 'uppercase', letterSpacing: '0.4px',
+      background: inverted ? 'rgba(255,255,255,0.22)' : 'rgba(88,86,214,0.12)',
+      color: inverted ? 'white' : '#5856d6',
+    }}>
+      Admin
+    </span>
+  )
+}
+
 function isOnline(lastSeen: string | null | undefined, now: number | null): boolean {
   if (!lastSeen || now === null) return false
   const t = new Date(lastSeen).getTime()
@@ -552,8 +567,9 @@ export default function ScheduleEditor({
                               )}
                             </div>
                             <div style={{ flex: 1 }}>
-                              <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', margin: 0 }}>
+                              <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
                                 {tech?.display_name ?? '—'}
+                                {tech?.role === 'admin' && <AdminMark />}
                               </p>
                               <p style={{ fontSize: 11, color: 'var(--text-secondary)', margin: 0 }}>
                                 {s.start_time} – {s.end_time}
@@ -611,6 +627,7 @@ export default function ScheduleEditor({
                                 }}>
                                 {checked && <span style={{ fontSize: 12, lineHeight: 1 }}>✓</span>}
                                 {t.display_name}
+                                {t.role === 'admin' && <AdminMark inverted={checked} />}
                               </button>
                             )
                           })}

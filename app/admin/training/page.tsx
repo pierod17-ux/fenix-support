@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
 import SystemContextsEditor from '@/components/admin/SystemContextsEditor'
 import TicketToKnowledge from '@/components/admin/TicketToKnowledge'
 import AIRulesEditor from '@/components/admin/AIRulesEditor'
@@ -8,6 +9,14 @@ import ImportFromDocument from '@/components/admin/ImportFromDocument'
 
 export default async function TrainingPage() {
   const supabase = await createClient()
+
+  // Solo admin: il training incide sul prompt di sistema dell'AI. La voce di menu
+  // e' gia' nascosta ai tecnici, ma l'URL diretto va bloccato qui.
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+  const { data: me } = await supabase
+    .from('technician_profiles').select('role').eq('id', user.id).single()
+  if (me?.role !== 'admin') redirect('/admin')
 
   const [
     { data: contextsConfig },

@@ -16,7 +16,10 @@ const CATEGORIES: { key: RuleCategory; label: string; color: string; bg: string 
 ]
 const catMeta = (k: RuleCategory) => CATEGORIES.find(c => c.key === k) ?? CATEGORIES[0]
 
-interface ProposedRule { key: string; category: RuleCategory; text: string; selected: boolean }
+// Conflitto segnalato dal controllo con le regole già attive
+interface ConflictNote { kind: 'contradiction' | 'duplicate'; existingText: string; reason: string }
+
+interface ProposedRule { key: string; category: RuleCategory; text: string; selected: boolean; conflicts: ConflictNote[] }
 interface ProposedContext { key: string; title: string; content: string; selected: boolean }
 interface Proposal {
   kind: 'instructions' | 'documentation' | 'mixed'
@@ -24,13 +27,20 @@ interface Proposal {
   truncated: boolean
   rules: ProposedRule[]
   contexts: ProposedContext[]
+  // stato del controllo conflitti con le regole esistenti
+  conflictCheck: 'pending' | 'done' | 'failed' | 'skipped'
 }
 
-const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '9px 12px', borderRadius: 10,
-  background: 'var(--surface-2)', border: '1.5px solid var(--border)',
-  color: 'var(--text-primary)', fontSize: 13, fontFamily: 'inherit', lineHeight: 1.45,
+const fieldLabel: React.CSSProperties = {
+  fontSize: 11, fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.4px',
 }
+const inputStyle: React.CSSProperties = {
+  width: '100%', padding: '10px 12px', borderRadius: 10,
+  background: 'var(--surface)', border: '1.5px solid var(--border)',
+  color: 'var(--text-primary)', fontSize: 14, fontFamily: 'inherit', lineHeight: 1.45,
+}
+const focusOn = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = 'var(--accent)' }
+const focusOff = (e: React.FocusEvent<HTMLElement>) => { e.currentTarget.style.borderColor = 'var(--border)' }
 
 // Importa regole e contesti da un documento: l'AI PROPONE, l'amministratore
 // rivede (modifica, seleziona, scarta) e solo allora applica. Nulla cambia il
@@ -55,17 +65,48 @@ export default function ImportFromDocument({
       const res = await fetch('/api/config/import-document', { method: 'POST', body: fd })
       const d = await res.json().catch(() => ({}))
       if (!res.ok) { setError(d.error ?? `Errore ${res.status}`); return }
-      setProposal({
-        kind: d.kind, summary: d.summary, truncated: !!d.truncated,
-        rules: (d.rules ?? []).map((r: { category: RuleCategory; text: string }, i: number) =>
-          ({ key: `r${i}`, category: r.category, text: r.text, selected: true })),
-        contexts: (d.contexts ?? []).map((c: { title: string; content: string }, i: number) =>
-          ({ key: `c${i}`, title: c.title, content: c.content, selected: true })),
-      })
+      const rules: ProposedRule[] = (d.rules ?? []).map((r: { category: RuleCategory; text: string }, i: number) =>
+        ({ key: `r${i}`, category: r.category, text: r.text, selected: true, conflicts: [] }))
+      const contexts: ProposedContext[] = (d.contexts ?? []).map((c: { title: string; content: string }, i: number) =>
+        ({ key: `c${i}`, title: c.title, content: c.content, selected: true }))
+      const needsCheck = rules.length > 0 && currentRules.length > 0
+      setProposal({ kind: d.kind, summary: d.summary, truncated: !!d.truncated, rules, contexts,
+        conflictCheck: needsCheck ? 'pending' : 'skipped' })
+      if (needsCheck) void checkConflicts(rules)
     } catch {
       setError('Errore di rete durante l\'analisi. Riprova.')
     } finally {
       setAnalyzing(false)
+    }
+  }
+
+  // Confronta le regole proposte con quelle già attive: segnala contraddizioni
+  // e duplicati sotto ogni regola. Solo avviso: la decisione resta all'admin.
+  async function checkConflicts(rules: ProposedRule[]) {
+    try {
+      const res = await fetch('/api/config/check-conflicts', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          candidates: rules.map(r => ({ category: r.category, text: r.text })),
+          existing: currentRules.map(r => ({ category: r.category, text: r.text })),
+        }),
+      })
+      if (!res.ok) throw new Error(String(res.status))
+      const d = await res.json()
+      const byIndex = new Map<number, ConflictNote[]>()
+      for (const c of (d.conflicts ?? []) as { candidateIndex: number; existingIndex: number; kind: ConflictNote['kind']; reason: string }[]) {
+        const existing = currentRules[c.existingIndex]
+        if (!existing) continue
+        const list = byIndex.get(c.candidateIndex) ?? []
+        list.push({ kind: c.kind, existingText: existing.text, reason: c.reason })
+        byIndex.set(c.candidateIndex, list)
+      }
+      setProposal(p => p && {
+        ...p, conflictCheck: 'done',
+        rules: p.rules.map((r, i) => ({ ...r, conflicts: byIndex.get(i) ?? [] })),
+      })
+    } catch {
+      setProposal(p => p && { ...p, conflictCheck: 'failed' })
     }
   }
 
@@ -79,6 +120,7 @@ export default function ImportFromDocument({
   const selRules = proposal?.rules.filter(r => r.selected && r.text.trim()) ?? []
   const selContexts = proposal?.contexts.filter(c => c.selected && c.title.trim() && c.content.trim()) ?? []
   const selCount = selRules.length + selContexts.length
+  const conflictingSelected = selRules.filter(r => r.conflicts.length > 0).length
 
   async function apply() {
     if (!proposal || selCount === 0) return
@@ -202,6 +244,14 @@ export default function ImportFromDocument({
               )}
             </div>
 
+            {(proposal.rules.length > 0 || proposal.contexts.length > 0) && (
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
+                <span aria-hidden style={{ fontSize: 14 }}>✎</span>
+                Tutti i campi qui sotto sono <strong style={{ color: 'var(--text-primary)' }}>modificabili</strong>: clicca su un testo per correggerlo,
+                cambia la categoria dal menu, togli la spunta a ciò che non vuoi importare.
+              </p>
+            )}
+
             {proposal.kind === 'documentation' && proposal.rules.length === 0 && proposal.contexts.length === 0 && (
               <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                 Questo file sembra documentazione tecnica: va caricato nella sezione <strong>Carica documenti di addestramento</strong>, così resta consultabile dall&apos;AI tramite ricerca.
@@ -210,32 +260,71 @@ export default function ImportFromDocument({
 
             {proposal.rules.length > 0 && (
               <section>
-                <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                  Regole proposte ({proposal.rules.length})
-                </h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+                  <h3 style={{ ...fieldLabel, fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>
+                    Regole proposte ({proposal.rules.length})
+                  </h3>
+                  {proposal.conflictCheck === 'pending' && (
+                    <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Controllo conflitti con le regole esistenti…</span>
+                  )}
+                  {proposal.conflictCheck === 'failed' && (
+                    <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Controllo conflitti non disponibile</span>
+                  )}
+                  {proposal.conflictCheck === 'done' && (
+                    conflictingSelected > 0 ? (
+                      <span style={{ fontSize: 12, fontWeight: 600, color: '#ff9500' }}>
+                        ⚠ {conflictingSelected} {conflictingSelected === 1 ? 'regola in possibile conflitto' : 'regole in possibile conflitto'} con quelle esistenti
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: 12, color: '#34c759', fontWeight: 500 }}>Nessun conflitto con le regole esistenti ✓</span>
+                    )
+                  )}
+                </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {proposal.rules.map(r => {
                     const m = catMeta(r.category)
+                    const hasConflict = r.conflicts.length > 0
                     return (
                       <div key={r.key} style={{
-                        display: 'flex', gap: 10, alignItems: 'flex-start', padding: 10, borderRadius: 12,
-                        border: '1px solid var(--border)', opacity: r.selected ? 1 : 0.5,
+                        display: 'flex', gap: 10, alignItems: 'flex-start', padding: 12, borderRadius: 12,
+                        border: `1px solid ${hasConflict && r.selected ? 'rgba(255,149,0,0.45)' : 'var(--border)'}`,
+                        background: hasConflict && r.selected ? 'rgba(255,149,0,0.04)' : 'transparent',
+                        opacity: r.selected ? 1 : 0.5,
                       }}>
-                        <input type="checkbox" checked={r.selected}
+                        <input type="checkbox" checked={r.selected} title={r.selected ? 'Escludi dall\'import' : 'Includi nell\'import'}
                           onChange={e => updateRule(r.key, { selected: e.target.checked })}
-                          style={{ marginTop: 10, width: 16, height: 16, cursor: 'pointer', accentColor: 'var(--accent)' }} />
-                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          <select value={r.category}
-                            onChange={e => updateRule(r.key, { category: e.target.value as RuleCategory })}
-                            style={{
-                              alignSelf: 'flex-start', fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 20,
-                              border: 'none', background: m.bg, color: m.color, cursor: 'pointer', fontFamily: 'inherit',
+                          style={{ marginTop: 12, width: 16, height: 16, cursor: 'pointer', accentColor: 'var(--accent)', flexShrink: 0 }} />
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={fieldLabel}>Categoria</span>
+                            <select value={r.category} title="Cambia categoria"
+                              onChange={e => updateRule(r.key, { category: e.target.value as RuleCategory })}
+                              style={{
+                                fontSize: 11, fontWeight: 600, padding: '4px 8px', borderRadius: 20,
+                                border: `1px solid ${m.color}`, background: m.bg, color: m.color, cursor: 'pointer', fontFamily: 'inherit',
+                              }}>
+                              {CATEGORIES.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+                            </select>
+                          </div>
+                          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <span style={fieldLabel}>Testo della regola</span>
+                            <textarea value={r.text} rows={2} placeholder="Testo della regola…"
+                              onChange={e => updateRule(r.key, { text: e.target.value })}
+                              onFocus={focusOn} onBlur={focusOff}
+                              style={{ ...inputStyle, resize: 'vertical' }} />
+                          </label>
+                          {hasConflict && r.conflicts.map((c, i) => (
+                            <div key={i} style={{
+                              padding: '8px 10px', borderRadius: 10, fontSize: 12, lineHeight: 1.45,
+                              background: 'rgba(255,149,0,0.10)', border: '1px solid rgba(255,149,0,0.25)', color: 'var(--text-primary)',
                             }}>
-                            {CATEGORIES.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
-                          </select>
-                          <textarea value={r.text} rows={2}
-                            onChange={e => updateRule(r.key, { text: e.target.value })}
-                            style={{ ...inputStyle, resize: 'vertical' }} />
+                              <strong style={{ color: '#c77700' }}>
+                                ⚠ {c.kind === 'duplicate' ? 'Duplica una regola esistente' : 'Contraddice una regola esistente'}
+                              </strong>
+                              <span style={{ display: 'block', marginTop: 3, color: 'var(--text-secondary)' }}>«{c.existingText}»</span>
+                              <span style={{ display: 'block', marginTop: 3 }}>{c.reason}</span>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )
@@ -246,25 +335,33 @@ export default function ImportFromDocument({
 
             {proposal.contexts.length > 0 && (
               <section>
-                <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                <h3 style={{ ...fieldLabel, fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>
                   Contesti proposti ({proposal.contexts.length})
                 </h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {proposal.contexts.map(c => (
                     <div key={c.key} style={{
-                      display: 'flex', gap: 10, alignItems: 'flex-start', padding: 10, borderRadius: 12,
+                      display: 'flex', gap: 10, alignItems: 'flex-start', padding: 12, borderRadius: 12,
                       border: '1px solid var(--border)', opacity: c.selected ? 1 : 0.5,
                     }}>
-                      <input type="checkbox" checked={c.selected}
+                      <input type="checkbox" checked={c.selected} title={c.selected ? 'Escludi dall\'import' : 'Includi nell\'import'}
                         onChange={e => updateContext(c.key, { selected: e.target.checked })}
-                        style={{ marginTop: 10, width: 16, height: 16, cursor: 'pointer', accentColor: 'var(--accent)' }} />
-                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <input value={c.title} placeholder="Titolo"
-                          onChange={e => updateContext(c.key, { title: e.target.value })}
-                          style={{ ...inputStyle, fontWeight: 600 }} />
-                        <textarea value={c.content} rows={4}
-                          onChange={e => updateContext(c.key, { content: e.target.value })}
-                          style={{ ...inputStyle, resize: 'vertical' }} />
+                        style={{ marginTop: 12, width: 16, height: 16, cursor: 'pointer', accentColor: 'var(--accent)', flexShrink: 0 }} />
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <span style={fieldLabel}>Titolo</span>
+                          <input value={c.title} placeholder="Titolo del contesto"
+                            onChange={e => updateContext(c.key, { title: e.target.value })}
+                            onFocus={focusOn} onBlur={focusOff}
+                            style={{ ...inputStyle, fontWeight: 600 }} />
+                        </label>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <span style={fieldLabel}>Contenuto</span>
+                          <textarea value={c.content} rows={4} placeholder="Contenuto del contesto…"
+                            onChange={e => updateContext(c.key, { content: e.target.value })}
+                            onFocus={focusOn} onBlur={focusOff}
+                            style={{ ...inputStyle, resize: 'vertical' }} />
+                        </label>
                       </div>
                     </div>
                   ))}
@@ -289,6 +386,11 @@ export default function ImportFromDocument({
               }}>
                 Scarta
               </button>
+              {conflictingSelected > 0 && (
+                <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                  Stai per importare {conflictingSelected} {conflictingSelected === 1 ? 'regola segnalata' : 'regole segnalate'}: puoi comunque procedere.
+                </span>
+              )}
             </div>
           </>
         )}
