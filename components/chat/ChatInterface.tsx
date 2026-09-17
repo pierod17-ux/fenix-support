@@ -243,7 +243,7 @@ export default function ChatInterface() {
 
     setMessages([{
       role: 'assistant',
-      content: `Ciao **${customerInfo.name}**! Sono **Aura**, l'assistente virtuale di Fenix. 🌐\n\nSono qui per aiutarti con la tua macchina **${customerInfo.machineModel}**${customerInfo.machineSerial ? ` (S/N: ${customerInfo.machineSerial})` : ''}. Puoi scrivermi nella tua lingua: ti risponderò nella stessa.\n\nDescrivimi pure il problema che stai riscontrando.`,
+      content: `Ciao **${customerInfo.name}**! Sono **Aura**, l'assistente virtuale di Fenix. 🌐\n\nSono qui per aiutarti con la tua macchina **${customerInfo.machineModel}**${customerInfo.machineSerial ? ` (S/N: ${customerInfo.machineSerial})` : ''}. Puoi scrivermi nella tua lingua: ti risponderò nella stessa.\n\n🔊 Puoi disattivare la mia voce dal pulsante in alto a destra, oppure dettare il messaggio a voce con il microfono in basso a sinistra.\n\nDescrivimi pure il problema che stai riscontrando.`,
     }])
     setPhase('chat')
   }
