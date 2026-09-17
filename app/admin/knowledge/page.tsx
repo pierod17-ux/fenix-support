@@ -72,6 +72,8 @@ export default async function KnowledgePage() {
           chunk_count: d.chunk_count,
           created_at: d.created_at,
           description: d.description,
+          source_type: d.source_type ?? 'file',
+          source_url: d.source_url ?? null,
         })) ?? []} />
       </div>
     </div>

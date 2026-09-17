@@ -74,14 +74,21 @@ CREATE TABLE IF NOT EXISTS support_tickets (
   escalated_at timestamptz,
   resolved_at timestamptz,
   problem_category text CHECK (problem_category IN ('hardware','PC','software','firmware','meccanica')),
+  satisfaction_rating smallint CHECK (satisfaction_rating BETWEEN 0 AND 5),
+  rated_at timestamptz,
   created_at timestamptz DEFAULT now()
 );
 COMMENT ON COLUMN public.support_tickets.problem_category IS
   'Categoria del problema assegnata dall''AI in fase di escalation: hardware, PC, software, firmware, meccanica';
+COMMENT ON COLUMN public.support_tickets.satisfaction_rating IS
+  'Valutazione 0-5 stelle chiesta dall''AI al cliente a fine chat, dopo conferma esplicita (vedi lib/chat)';
 
 CREATE INDEX IF NOT EXISTS idx_tickets_status ON support_tickets(status);
 CREATE INDEX IF NOT EXISTS idx_tickets_created ON support_tickets(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tickets_assigned ON support_tickets(assigned_to);
+-- Patch per DB già esistenti (idempotente, vedi nota d'intestazione del file)
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS satisfaction_rating smallint CHECK (satisfaction_rating BETWEEN 0 AND 5);
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS rated_at timestamptz;
 
 -- ---------- MESSAGGI DEL TICKET ----------
 CREATE TABLE IF NOT EXISTS ticket_messages (
@@ -105,8 +112,14 @@ CREATE TABLE IF NOT EXISTS knowledge_documents (
   status text NOT NULL DEFAULT 'processing' CHECK (status IN ('processing', 'ready', 'error')),
   chunk_count int DEFAULT 0,
   uploaded_by uuid REFERENCES technician_profiles,
+  -- 'link': indicizzato da una pagina web (source_url) invece che da un file caricato
+  source_type text NOT NULL DEFAULT 'file' CHECK (source_type IN ('file', 'link')),
+  source_url text,
   created_at timestamptz DEFAULT now()
 );
+-- Patch per DB già esistenti (idempotente, vedi nota d'intestazione del file)
+ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS source_type text NOT NULL DEFAULT 'file' CHECK (source_type IN ('file','link'));
+ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS source_url text;
 
 -- ---------- KNOWLEDGE BASE — CHUNKS (pgvector + full-text italian) ----------
 CREATE TABLE IF NOT EXISTS knowledge_chunks (

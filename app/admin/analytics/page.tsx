@@ -27,6 +27,7 @@ export default async function AnalyticsPage() {
     { data: recentTickets },
     { data: usageThisMonth },
     { data: costLimitData },
+    { data: ratedTickets },
   ] = await Promise.all([
     supabase.from('support_tickets').select('*', { count: 'exact', head: true }),
     supabase.from('support_tickets').select('*', { count: 'exact', head: true }).in('status', ['resolved', 'closed']),
@@ -38,6 +39,7 @@ export default async function AnalyticsPage() {
       .gte('created_at', thirtyDaysAgo).order('created_at', { ascending: false }).limit(8),
     supabase.from('ai_usage_log').select('input_tokens, output_tokens, cost_usd').gte('created_at', monthStart),
     supabase.from('ai_config').select('value').eq('key', 'cost_limit_usd').single(),
+    supabase.from('support_tickets').select('satisfaction_rating').gte('created_at', thirtyDaysAgo).not('satisfaction_rating', 'is', null),
   ])
 
   const resolutionRate = totalTickets ? Math.round(((resolvedTickets ?? 0) / totalTickets) * 100) : 0
@@ -57,6 +59,11 @@ export default async function AnalyticsPage() {
     if (t.problem_category) acc[t.problem_category] = (acc[t.problem_category] ?? 0) + 1; return acc
   }, {})
   const categorizedTotal = Object.values(categoryCounts).reduce((s, n) => s + n, 0)
+
+  const ratings = (ratedTickets ?? []).map(t => t.satisfaction_rating as number)
+  const ratingCounts = [0, 1, 2, 3, 4, 5].map(star => ratings.filter(r => r === star).length)
+  const avgRating = ratings.length > 0 ? ratings.reduce((s, r) => s + r, 0) / ratings.length : null
+  const ratedPct = (totalTickets ?? 0) > 0 ? Math.round((ratings.length / (totalTickets ?? 1)) * 100) : 0
 
   const usage = usageThisMonth ?? []
   const currentMonthCost = usage.reduce((s, r) => s + Number(r.cost_usd), 0)
@@ -236,6 +243,63 @@ export default async function AnalyticsPage() {
                   </div>
                 )
               })}
+            </div>
+          )}
+        </div>
+
+        {/* Soddisfazione cliente (0-5 stelle, chiesta da Aura a fine chat) */}
+        <div style={{ background: 'var(--surface)', borderRadius: 20, boxShadow: 'var(--shadow-md)', padding: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>
+              Soddisfazione cliente
+            </h3>
+            <span style={{
+              fontSize: 10, fontWeight: 600, padding: '3px 9px', borderRadius: 20,
+              background: 'rgba(0,113,227,0.10)', color: 'var(--accent)',
+            }}>
+              AI
+            </span>
+          </div>
+          <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16 }}>
+            Valutazione 0-5 chiesta da Aura a fine chat, dopo conferma del cliente
+          </p>
+          {ratings.length === 0 ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 80 }}>
+              <p style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>Nessuna valutazione nel periodo</p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: 24, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ textAlign: 'center', flexShrink: 0 }}>
+                <p style={{ fontSize: 32, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1 }}>
+                  {avgRating?.toFixed(1)}
+                </p>
+                <div style={{ display: 'flex', gap: 2, justifyContent: 'center', marginTop: 6 }}>
+                  {[0, 1, 2, 3, 4].map(i => (
+                    <svg key={i} width="13" height="13" viewBox="0 0 24 24"
+                      fill={avgRating !== null && i < Math.round(avgRating) ? '#ff9500' : 'none'} stroke="#ff9500" strokeWidth="1.5">
+                      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                    </svg>
+                  ))}
+                </div>
+                <p style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 6 }}>
+                  {ratings.length} valutazion{ratings.length === 1 ? 'e' : 'i'} · {ratedPct}% dei ticket
+                </p>
+              </div>
+              <div style={{ flex: 1, minWidth: 180, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {[5, 4, 3, 2, 1, 0].map(star => {
+                  const count = ratingCounts[star]
+                  const pct = ratings.length > 0 ? Math.round((count / ratings.length) * 100) : 0
+                  return (
+                    <div key={star} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 12, color: 'var(--text-secondary)', width: 44, flexShrink: 0 }}>{star} ★</span>
+                      <div style={{ flex: 1, height: 6, borderRadius: 3, background: 'var(--surface-3)' }}>
+                        <div style={{ height: '100%', borderRadius: 3, width: `${pct}%`, background: '#ff9500', transition: 'width 0.4s' }} />
+                      </div>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', width: 20, textAlign: 'right', flexShrink: 0 }}>{count}</span>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           )}
         </div>

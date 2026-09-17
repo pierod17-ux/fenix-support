@@ -21,10 +21,27 @@ const SECTIONS: Section[] = [
       { h: 'Il flusso in breve', steps: [
         'Il cliente apre la chat, compila un breve form (nome, centro, macchina) e descrive il problema.',
         'Aura (l\'AI) fa una diagnosi guidata, usando la Knowledge Base e le regole che imposti tu.',
+        'Prima di chiudere, Aura chiede sempre conferma al cliente e una valutazione 0-5 stelle (vedi sotto).',
         'Se il problema si risolve, finisce lì: la chat resta salvata in Conversazioni.',
         'Se non si risolve, Aura fa un\'escalation: crea un ticket e avvisa i tecnici reperibili.',
         'Un tecnico apre una chat diretta col cliente e gestisce il caso fino alla risoluzione.',
       ] },
+    ],
+  },
+  {
+    id: 'chiusura',
+    icon: '⭐',
+    title: 'Chiusura chat e valutazione',
+    summary: 'Conferma del cliente e voto 0-5 stelle a fine conversazione',
+    body: [
+      { p: 'Prima di chiudere una conversazione — che il problema sia risolto oppure debba passare a un tecnico — Aura chiede sempre il permesso al cliente. Non chiude né apre un ticket senza questa conferma esplicita.' },
+      { h: 'Cosa succede', steps: [
+        'Aura chiede: "Posso considerare risolta la richiesta?" oppure "Posso aprire una segnalazione per un tecnico?".',
+        'Se il cliente non conferma, la conversazione prosegue normalmente.',
+        'Se conferma, Aura chiede una valutazione del servizio da 0 a 5 stelle (il cliente può anche rifiutare).',
+        'La valutazione viene salvata sul ticket e appare nelle statistiche in Analytics.',
+      ] },
+      { p: 'Se serve comunque un tecnico, il ticket viene aperto come sempre: la valutazione riguarda il lavoro di Aura fino a quel momento, non quello del tecnico che segue dopo.' },
     ],
   },
   {
@@ -67,9 +84,12 @@ const SECTIONS: Section[] = [
       { p: 'La Knowledge Base è il sapere tecnico a cui Aura attinge per rispondere: manuali, procedure, codici di errore. Più è ricca e aggiornata, più le risposte sono precise.' },
       { h: 'Cosa puoi fare', steps: [
         'Caricare documenti (es. PDF): vengono indicizzati e usati automaticamente dall\'AI.',
+        'Aggiungere un link a una pagina web (es. un manuale online o una guida d\'uso): il contenuto viene scaricato e indicizzato come un documento — utile anche per supporto sull\'utilizzo della macchina, non solo sui guasti.',
+        'Aggiornare un link già aggiunto (icona ↻) se la pagina online è cambiata: il contenuto viene riscaricato senza duplicare la voce.',
         'Trasformare i ticket risolti in nuova conoscenza, così l\'AI impara dai casi reali.',
-        'Rimuovere documenti non più validi.',
+        'Rimuovere documenti o link non più validi.',
       ] },
+      { p: 'Nota: i link funzionano solo con pagine il cui testo è già presente nell\'HTML iniziale (non richiedono JavaScript per essere lette).' },
     ],
   },
   {
@@ -114,6 +134,7 @@ const SECTIONS: Section[] = [
       { h: 'Cosa trovi', steps: [
         'Distribuzione per priorità e per modello di macchina.',
         'Scheda “Per categoria problema”: i ticket suddivisi per tipologia, assegnata automaticamente dall\'AI.',
+        'Scheda “Soddisfazione cliente”: media e distribuzione delle valutazioni 0-5 stelle raccolte da Aura a fine chat.',
         'Costi AI del mese rispetto al limite impostato.',
       ] },
     ],
