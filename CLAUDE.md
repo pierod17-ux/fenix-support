@@ -179,6 +179,20 @@ sull'utilizzo della macchina, non solo sulla diagnosi guasti.
 - UI: `components/admin/DocumentUpload.tsx` ha un toggle File/Link nello stesso pannello "Aggiungi
   contenuto"; `components/admin/KnowledgeDocList.tsx` mostra un'icona diversa (globo) e l'URL al posto
   del tipo file per i link, più il pulsante ↻ di aggiornamento (solo per i link).
+- ⚠️ **Bug scoperto subito dopo il rilascio (2026-09-18)**: aggiungere un link non bastava — Aura
+  rispondeva "non posso accedere a link esterni" e, a domande sull'uso della macchina, "faccio solo
+  assistenza tecnica". Causa: `BASE_SYSTEM_PROMPT` in `app/api/chat/route.ts` scopeva esplicitamente
+  Aura alla sola risoluzione guasti (mission statement + lista "Cosa sai fare" tutta orientata alla
+  diagnosi) e non diceva mai al modello che il contenuto in "## Documentazione e guide rilevanti"
+  (iniettato da `retrieveContext()`, che sia da file o da link non fa differenza) è già sua conoscenza —
+  di default un LLM tende a rispondere "non ho accesso a internet" quando non gli viene detto il
+  contrario. Fix: allargata la mission e la lista "Cosa sai fare" all'uso/funzionamento della macchina
+  (non solo guasti) + nuova sezione "## Conoscenza da documenti e pagine web" che vieta esplicitamente
+  frasi tipo "non posso accedere a link esterni/internet" e istruisce a trattare quella sezione come
+  conoscenza propria. Rinominata anche l'intestazione RAG da "Documentazione tecnica rilevante" a
+  "Documentazione e guide rilevanti" per coerenza. **Se in futuro Aura torna a rifiutare domande d'uso o
+  a negare l'accesso a contenuti indicizzati, controllare prima questo prompt**, non la pipeline di
+  indicizzazione (che resta identica per file e link).
 
 ## Chiusura conversazione e feedback cliente (0-5 stelle)
 Richiesta del titolare (2026-09-18): prima di aprire un ticket per un tecnico o considerare risolta e
