@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { speak, stopSpeaking, isSpeechSupported } from '@/lib/voice'
+import { speak, stopSpeaking, isSpeechSupported, guessSpeechLang } from '@/lib/voice'
+import { isSpeechRecognitionSupported, startListening, stopListening } from '@/lib/speech-input'
 
 interface Message {
   role: 'user' | 'assistant' | 'technician'
@@ -66,6 +67,37 @@ export default function ChatInterface() {
     setVoiceEnabledState(next)
     try { localStorage.setItem('fenix_voice_enabled', String(next)) } catch { /* ignora */ }
     if (!next) stopSpeaking()
+  }
+
+  // Voce → testo per comporre il messaggio parlando (Web Speech API, gratis).
+  // Supporto browser molto meno uniforme del TTS (Firefox: assente): il
+  // pulsante compare solo se disponibile, controllato dopo il mount come per
+  // voiceSupported. Il testo riconosciuto popola l'input per la revisione del
+  // cliente — non invia mai da solo.
+  const [micSupported, setMicSupported] = useState(false)
+  const [listening, setListening] = useState(false)
+  useEffect(() => {
+    setMicSupported(isSpeechRecognitionSupported())
+    return () => stopListening()
+  }, [])
+
+  function toggleListening() {
+    if (listening) {
+      stopListening()
+      setListening(false)
+      return
+    }
+    stopSpeaking() // non ascoltare mentre Aura sta ancora parlando
+    const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant')
+    const lang = (lastAssistant && guessSpeechLang(lastAssistant.content))
+      || (typeof navigator !== 'undefined' ? navigator.language : null)
+      || 'it-IT'
+    const started = startListening(lang, {
+      onResult: (text) => { if (text) setInput(text) },
+      onEnd: () => setListening(false),
+      onError: () => setListening(false),
+    })
+    setListening(started)
   }
 
   // Legge ad alta voce ogni nuova risposta di Aura (mai i messaggi di user/tecnico).
@@ -218,6 +250,8 @@ export default function ChatInterface() {
 
   const sendMessage = useCallback(async (text: string) => {
     stopSpeaking()
+    stopListening()
+    setListening(false)
     if (!text.trim() || loading) return
 
     const userMsg: Message = { role: 'user', content: text }
@@ -533,6 +567,26 @@ export default function ChatInterface() {
               />
             </>
           )}
+          {micSupported && (
+            <button
+              type="button"
+              onClick={toggleListening}
+              disabled={loading}
+              title={listening ? 'Interrompi ascolto' : 'Detta il messaggio'}
+              aria-pressed={listening}
+              style={{
+                width: 42, height: 42, borderRadius: '50%', border: 'none', flexShrink: 0,
+                background: listening ? '#ff3b30' : 'var(--surface-3)',
+                color: listening ? 'white' : 'var(--text-secondary)',
+                cursor: loading ? 'default' : 'pointer',
+                opacity: loading ? 0.5 : 1,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'background 0.2s',
+              }}
+            >
+              <IconMic />
+            </button>
+          )}
           <textarea
             ref={inputRef}
             value={input}
@@ -544,7 +598,7 @@ export default function ChatInterface() {
             onKeyDown={e => {
               if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(input) }
             }}
-            placeholder="Descrivi il problema..."
+            placeholder={listening ? 'Ti ascolto...' : 'Descrivi il problema...'}
             disabled={loading}
             rows={1}
             style={{
@@ -712,6 +766,14 @@ function IconSpeakerOff() {
     <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 8v4h3l4 3.5v-10.5L6 8H3z" />
       <path d="M13.5 7.5l4 4M17.5 7.5l-4 4" />
+    </svg>
+  )
+}
+function IconMic() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="7" y="2.5" width="6" height="10" rx="3" />
+      <path d="M4.5 9.5a5.5 5.5 0 0011 0M10 15v2.5M7 17.5h6" />
     </svg>
   )
 }

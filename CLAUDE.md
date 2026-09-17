@@ -123,6 +123,38 @@ Decisione del titolare (2026-09-17): sintesi vocale lato client, nessuna chiave/
   richiesta) invece di simulare l'elenco voci in un browser reale. Anche `utter.rate`/`utter.pitch` letti
   indietro sono `float` WebIDL: confrontarli con tolleranza (`Math.abs(x - atteso) < 0.001`), non `===`.
 
+## Dettatura del messaggio cliente (STT) — Web Speech API del browser, gratis
+Richiesta del titolare (2026-09-17): stesso approccio gratuito/client-only del TTS, per praticità nel comporre
+il messaggio parlando invece di scrivere.
+- `lib/speech-input.ts`: `isSpeechRecognitionSupported()`, `startListening(lang, handlers)`, `stopListening()`,
+  `isListening()`. Wrappa `SpeechRecognition`/`webkitSpeechRecognition` con interfacce TypeScript minime locali
+  (l'API non è nello standard DOM lib, nessun pacchetto `@types` installato — non ne vale la pena per così poco).
+  `continuous = false` (un messaggio alla volta, si ferma da sola al silenzio), `interimResults = true` (il
+  testo si aggiorna mentre l'utente parla, non solo alla fine).
+- In `ChatInterface.tsx`: pulsante microfono nella barra di input (accanto al pulsante foto/video in chat
+  diretta), visibile solo se `micSupported` (rilevato **post-mount**, stesso pattern hydration-safe di
+  `voiceSupported`/`voiceEnabled` — mai leggere `SpeechRecognition` nel render iniziale). Il testo riconosciuto
+  **popola solo la textarea** per la revisione del cliente: **non invia mai da solo**, coerente con l'abitudine
+  di rivedere prima di inviare (stesso principio di "proposta, mai applicazione automatica" usato per
+  l'import regole da documento, anche se qui il motivo è UX non sicurezza).
+- Lingua del riconoscimento: `guessSpeechLang()` (già in `lib/voice.ts`, riusata) sull'ultimo messaggio
+  `assistant`, fallback `navigator.language`, fallback finale `'it-IT'`.
+- `sendMessage` chiama `stopListening()` (oltre al già esistente `stopSpeaking()`) a ogni invio, per non
+  lasciare un riconoscimento attivo a cavallo tra un messaggio e il successivo.
+- ⚠️ **Supporto browser molto più incostante del TTS**: Firefox non implementa affatto il riconoscimento
+  vocale (nessun `SpeechRecognition` né `webkitSpeechRecognition`); Safari lo supporta ma meno
+  affidabilmente di Chrome/Edge. Nessun fallback lato browser gratuito: il pulsante resta nascosto se
+  `isSpeechRecognitionSupported()` è `false`, esattamente come per la sintesi vocale in uscita.
+- ⚠️ **Testare `SpeechRecognition` in Playwright/headless**: a differenza di `speechSynthesis` (singleton
+  già presente su `window`, i cui *metodi* si patchano), qui serve sostituire il **costruttore** stesso
+  (`window.SpeechRecognition = FakeSpeechRecognition` in un `page.addInitScript()`, PRIMA che React monti,
+  altrimenti `isSpeechRecognitionSupported()` nel `useEffect` post-mount non lo trova) — il riconoscimento
+  vocale vero richiede microfono/audio reale, che Chromium headless non può fornire, quindi va sempre
+  simulato per intero (nessun test con motore reale come invece possibile per la sola *lettura* con TTS).
+  Verificato con un mock che genera un risultato finale sintetico dentro `stop()` (come farebbe l'evento
+  `onend` di un motore vero): pulsante compare, avvia `start()` con la lingua attesa, il testo riconosciuto
+  arriva nella textarea, il pulsante torna allo stato normale dopo `onend`, nessun invio automatico.
+
 ## Pattern critici — leggere sempre prima di toccare le API routes
 
 ```
@@ -227,6 +259,7 @@ components/
     ImportFromDocument.tsx → revisione/applicazione delle regole proposte da un documento
 lib/
   voice.ts                 → speak()/stopSpeaking(): sintesi vocale lato browser, gratis (Web Speech API)
+  speech-input.ts          → startListening()/stopListening(): dettatura del messaggio, gratis (Web Speech API)
   diagnostics.ts           → fetchMachineStatus(), tool stato_macchina, prompt diagnostica
   direct-chat.ts           → tecnici di turno, risoluzione token (invito/cliente), presa in carico atomica
   format.ts                → formatInt(): numeri deterministici (mai toLocaleString nei render)
