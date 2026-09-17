@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { speak, stopSpeaking, isSpeechSupported } from '@/lib/voice'
 
 interface Message {
   role: 'user' | 'assistant' | 'technician'
@@ -45,6 +46,40 @@ export default function ChatInterface() {
   const [directChatToken, setDirectChatToken] = useState<string | null>(null)
   const [streamingText, setStreamingText] = useState('')
   const [uploading, setUploading] = useState(false)
+  // Lettura vocale (Web Speech API, gratis): default ON ma disattivabile, la
+  // preferenza persiste per il browser del cliente. voiceSupported e il valore
+  // salvato si leggono SOLO dopo il mount (mai su window/localStorage nel
+  // render iniziale, altrimenti mismatch SSR/client — vedi CLAUDE.md).
+  const [voiceEnabled, setVoiceEnabledState] = useState(true)
+  const [voiceSupported, setVoiceSupported] = useState(false)
+  const lastSpokenIndexRef = useRef(-1)
+  useEffect(() => {
+    setVoiceSupported(isSpeechSupported())
+    try {
+      const stored = localStorage.getItem('fenix_voice_enabled')
+      if (stored !== null) setVoiceEnabledState(stored === 'true')
+    } catch { /* localStorage non disponibile: resta il default */ }
+    return () => stopSpeaking()
+  }, [])
+
+  function setVoiceEnabled(next: boolean) {
+    setVoiceEnabledState(next)
+    try { localStorage.setItem('fenix_voice_enabled', String(next)) } catch { /* ignora */ }
+    if (!next) stopSpeaking()
+  }
+
+  // Legge ad alta voce ogni nuova risposta di Aura (mai i messaggi di user/tecnico).
+  // lastSpokenIndexRef evita di rileggere lo stesso messaggio a ogni re-render.
+  useEffect(() => {
+    if (!voiceEnabled || !voiceSupported) return
+    const lastIndex = messages.length - 1
+    if (lastIndex < 0 || lastSpokenIndexRef.current === lastIndex) return
+    const last = messages[lastIndex]
+    if (last.role !== 'assistant') return
+    lastSpokenIndexRef.current = lastIndex
+    speak(last.content)
+  }, [messages, voiceEnabled, voiceSupported])
+
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -182,6 +217,7 @@ export default function ChatInterface() {
   }
 
   const sendMessage = useCallback(async (text: string) => {
+    stopSpeaking()
     if (!text.trim() || loading) return
 
     const userMsg: Message = { role: 'user', content: text }
@@ -383,15 +419,33 @@ export default function ChatInterface() {
         <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
           {customerInfo.name} · {customerInfo.machineModel}
         </span>
-        {ticketId && (
-          <span style={{
-            fontSize: 11, fontFamily: 'monospace', fontWeight: 600,
-            color: 'var(--accent)', background: 'var(--accent-light)',
-            padding: '2px 8px', borderRadius: 6,
-          }}>
-            #{ticketId.slice(0, 8).toUpperCase()}
-          </span>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {voiceSupported && (
+            <button
+              onClick={() => setVoiceEnabled(!voiceEnabled)}
+              title={voiceEnabled ? 'Disattiva la voce di Aura' : 'Attiva la voce di Aura'}
+              aria-pressed={voiceEnabled}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: 26, height: 26, borderRadius: 8, border: 'none', cursor: 'pointer',
+                background: voiceEnabled ? 'var(--accent-light)' : 'transparent',
+                color: voiceEnabled ? 'var(--accent)' : 'var(--text-tertiary)',
+                flexShrink: 0,
+              }}
+            >
+              {voiceEnabled ? <IconSpeakerOn /> : <IconSpeakerOff />}
+            </button>
+          )}
+          {ticketId && (
+            <span style={{
+              fontSize: 11, fontFamily: 'monospace', fontWeight: 600,
+              color: 'var(--accent)', background: 'var(--accent-light)',
+              padding: '2px 8px', borderRadius: 6,
+            }}>
+              #{ticketId.slice(0, 8).toUpperCase()}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Messages */}
@@ -642,6 +696,23 @@ function Bubble({ role, content, mediaUrl, mediaType, streaming }: {
         dangerouslySetInnerHTML={{ __html: html }}
       />
     </div>
+  )
+}
+
+function IconSpeakerOn() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 8v4h3l4 3.5v-10.5L6 8H3z" />
+      <path d="M13.5 7a4 4 0 010 6M15.8 4.7a7.5 7.5 0 010 10.6" />
+    </svg>
+  )
+}
+function IconSpeakerOff() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 8v4h3l4 3.5v-10.5L6 8H3z" />
+      <path d="M13.5 7.5l4 4M17.5 7.5l-4 4" />
+    </svg>
   )
 }
 
