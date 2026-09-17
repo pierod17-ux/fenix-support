@@ -100,8 +100,9 @@ Decisione del titolare (2026-09-17): sintesi vocale lato client, nessuna chiave/
 - Qualità della voce dipende dal dispositivo/browser del cliente, non controllabile da noi (limite noto e
   accettato scegliendo questa opzione invece di un TTS cloud a pagamento). Stesso discorso per il genere:
   è un'euristica sul nome della voce disponibile sul dispositivo, non una garanzia.
-- **Velocità e genere** (richiesta del titolare, 2026-09-17): `rate = 1.2` sempre (20% più veloce del
-  default). Il Web Speech API non espone un campo "genere" ufficiale per le voci: `genderScore()` in
+- **Velocità e genere** (richiesta del titolare, 2026-09-17, velocità alzata una seconda volta lo stesso
+  giorno dopo l'aggiunta della dettatura): `rate = 1.26` sempre (20% più veloce del default, poi +5%
+  ulteriore). Il Web Speech API non espone un campo "genere" ufficiale per le voci: `genderScore()` in
   `lib/voice.ts` usa un'euristica su nomi noti (Alice, Elsa, Samantha, Zira, Amelie, Monica, Anna… + le
   parole "female"/"male" nel nome tecnico), verificata con 21 casi realistici Google/Microsoft/Apple/Android
   nelle 5 lingue supportate (tutti corretti). Se non si trova una voce riconosciuta come femminile per la
@@ -139,6 +140,9 @@ il messaggio parlando invece di scrivere.
   l'import regole da documento, anche se qui il motivo è UX non sicurezza).
 - Lingua del riconoscimento: `guessSpeechLang()` (già in `lib/voice.ts`, riusata) sull'ultimo messaggio
   `assistant`, fallback `navigator.language`, fallback finale `'it-IT'`.
+- Il messaggio di benvenuto iniziale di Aura (in `startChat`) avvisa il cliente di entrambi i pulsanti:
+  disattivazione voce in alto a destra, dettatura in basso a sinistra — letto anche ad alta voce dal TTS,
+  quindi il cliente lo sente anche se non legge il testo.
 - `sendMessage` chiama `stopListening()` (oltre al già esistente `stopSpeaking()`) a ogni invio, per non
   lasciare un riconoscimento attivo a cavallo tra un messaggio e il successivo.
 - ⚠️ **Supporto browser molto più incostante del TTS**: Firefox non implementa affatto il riconoscimento

@@ -156,7 +156,7 @@ export function speak(rawText: string): void {
   const { voice, pitch } = pickVoice(lang)
   try { if (voice) utter.voice = voice } catch { /* si legge comunque con la voce di default */ }
   try { utter.pitch = pitch } catch { /* ignora */ }
-  try { utter.rate = 1.2 } catch { /* ignora */ } // 20% più veloce del ritmo di default
+  try { utter.rate = 1.26 } catch { /* ignora */ } // 26% più veloce del ritmo di default (richiesta titolare 2026-09-17: +5% oltre al 20% iniziale)
 
   try { window.speechSynthesis.speak(utter) } catch { /* la voce è un extra: mai bloccare la chat */ }
 }
