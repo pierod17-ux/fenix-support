@@ -84,6 +84,28 @@ dato il seriale restituisce `summary`, `status` (ok/warning/serious/critical), `
   Evento SSE `status` = indicatore transitorio lato client (non persistito). L'output del tool è trattato come
   dato non fidato nel prompt.
 
+## Voce di Aura (TTS) — Web Speech API del browser, gratis
+Decisione del titolare (2026-09-17): sintesi vocale lato client, nessuna chiave/costo per risposta.
+- `lib/voice.ts`: `speak()` (ripulisce il markdown/emoji, indovina la lingua con un'euristica leggera su
+  parole funzionali it/en/fr/es/de per scegliere la voce giusta, annulla sempre la lettura precedente prima
+  di iniziarne una nuova), `stopSpeaking()`, `isSpeechSupported()`. Silenzioso su qualunque errore: la voce
+  è un extra, non deve mai bloccare la chat.
+- In `ChatInterface.tsx`: un `useEffect` legge ad alta voce ogni nuovo messaggio `role: 'assistant'` aggiunto
+  a `messages` (mai user/tecnico); `sendMessage` chiama `stopSpeaking()` a ogni invio per non accavallare
+  la voce con la domanda successiva. Pulsante 🔊/🔇 nella "Ticket bar" per disattivare, preferenza persistita
+  in `localStorage('fenix_voice_enabled')`, default ON.
+- ⚠️ **`voiceEnabled`/`voiceSupported` si leggono SOLO in un `useEffect` post-mount**, mai nel render iniziale:
+  `window`/`localStorage` non esistono lato server → stesso hydration mismatch (#418) di `BuildLabel`, vedi
+  sezione "Insidie note lato client".
+- Qualità della voce dipende dal dispositivo/browser del cliente, non controllabile da noi (limite noto e
+  accettato scegliendo questa opzione invece di un TTS cloud a pagamento).
+- ⚠️ **Testare la Web Speech API in Playwright/headless**: `window.speechSynthesis` è un accessor
+  READ-ONLY sul prototipo di `Window` — riassegnare l'intero oggetto (`window.speechSynthesis = {...}`)
+  viene ignorato in silenzio dal browser (nessun errore). Per intercettare le chiamate nei test, patchare i
+  METODI sull'istanza reale (`window.speechSynthesis.speak = fn`), non sostituire l'oggetto — altrimenti il
+  codice dell'app userà comunque il vero `speechSynthesis` nativo con un `SpeechSynthesisUtterance` finto e
+  Chromium lancerà `TypeError: parameter 1 is not of type 'SpeechSynthesisUtterance'`.
+
 ## Pattern critici — leggere sempre prima di toccare le API routes
 
 ```
@@ -187,6 +209,7 @@ components/
     DiagnosticsToggle.tsx  → interruttore diagnostica remota + stato chiave
     ImportFromDocument.tsx → revisione/applicazione delle regole proposte da un documento
 lib/
+  voice.ts                 → speak()/stopSpeaking(): sintesi vocale lato browser, gratis (Web Speech API)
   diagnostics.ts           → fetchMachineStatus(), tool stato_macchina, prompt diagnostica
   direct-chat.ts           → tecnici di turno, risoluzione token (invito/cliente), presa in carico atomica
   format.ts                → formatInt(): numeri deterministici (mai toLocaleString nei render)
@@ -234,6 +257,7 @@ supabase/
 - ✅ Controllo conflitti tra regole (import e aggiunta manuale): segnala, non blocca
 - ✅ RAG su knowledge base (documenti + ticket risolti)
 - ✅ Diagnostica remota Evolution dal seriale (tool `stato_macchina`), abilitabile dall'admin
+- ✅ Voce di Aura (TTS via Web Speech API del browser): lettura automatica, disattivabile, gratis
 
 ## Automazioni infra
 - **pg_cron** job `on-call-check` (ogni minuto) → POST `/api/cron/on-call` con header `x-cron-secret` (env `CRON_SECRET`). Dedup in `on_call_notifications`. Ora in Europe/Rome.
