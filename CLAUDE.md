@@ -98,13 +98,30 @@ Decisione del titolare (2026-09-17): sintesi vocale lato client, nessuna chiave/
   `window`/`localStorage` non esistono lato server → stesso hydration mismatch (#418) di `BuildLabel`, vedi
   sezione "Insidie note lato client".
 - Qualità della voce dipende dal dispositivo/browser del cliente, non controllabile da noi (limite noto e
-  accettato scegliendo questa opzione invece di un TTS cloud a pagamento).
+  accettato scegliendo questa opzione invece di un TTS cloud a pagamento). Stesso discorso per il genere:
+  è un'euristica sul nome della voce disponibile sul dispositivo, non una garanzia.
+- **Velocità e genere** (richiesta del titolare, 2026-09-17): `rate = 1.2` sempre (20% più veloce del
+  default). Il Web Speech API non espone un campo "genere" ufficiale per le voci: `genderScore()` in
+  `lib/voice.ts` usa un'euristica su nomi noti (Alice, Elsa, Samantha, Zira, Amelie, Monica, Anna… + le
+  parole "female"/"male" nel nome tecnico), verificata con 21 casi realistici Google/Microsoft/Apple/Android
+  nelle 5 lingue supportate (tutti corretti). Se non si trova una voce riconosciuta come femminile per la
+  lingua rilevata, si alza leggermente il `pitch` (1.15 nessun segnale di genere, 1.25 se sono disponibili
+  solo voci maschili, 1.1 se l'elenco voci del sistema è vuoto) per orientarsi comunque verso il femminile.
+- ⚠️ **Ogni proprietà dell'utterance è impostata in un try/catch separato** (`voice`, `pitch`, `lang`,
+  `rate`): un motore TTS che rifiuta una voce (scoperto testando con voci finte, vedi sotto) non deve
+  impedire la lettura con le impostazioni di default — altrimenti un solo dettaglio incompatibile fa
+  fallire l'intera lettura in silenzio.
 - ⚠️ **Testare la Web Speech API in Playwright/headless**: `window.speechSynthesis` è un accessor
   READ-ONLY sul prototipo di `Window` — riassegnare l'intero oggetto (`window.speechSynthesis = {...}`)
   viene ignorato in silenzio dal browser (nessun errore). Per intercettare le chiamate nei test, patchare i
   METODI sull'istanza reale (`window.speechSynthesis.speak = fn`), non sostituire l'oggetto — altrimenti il
   codice dell'app userà comunque il vero `speechSynthesis` nativo con un `SpeechSynthesisUtterance` finto e
-  Chromium lancerà `TypeError: parameter 1 is not of type 'SpeechSynthesisUtterance'`.
+  Chromium lancerà `TypeError: parameter 1 is not of type 'SpeechSynthesisUtterance'`. Stesso discorso per
+  `getVoices()`: sovrascriverlo con voci finte (oggetti plain, non vere `SpeechSynthesisVoice`) e assegnarle
+  a `utter.voice` lancia `TypeError: Failed to convert value to 'SpeechSynthesisVoice'` — per testare la
+  selezione voce/genere conviene un test a parte sulla funzione pura `genderScore()` (nessuna API browser
+  richiesta) invece di simulare l'elenco voci in un browser reale. Anche `utter.rate`/`utter.pitch` letti
+  indietro sono `float` WebIDL: confrontarli con tolleranza (`Math.abs(x - atteso) < 0.001`), non `===`.
 
 ## Pattern critici — leggere sempre prima di toccare le API routes
 
