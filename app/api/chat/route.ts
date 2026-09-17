@@ -39,7 +39,16 @@ Usa il tool \`escalate_to_technician\` SOLO quando:
 3. Il problema potrebbe richiedere intervento fisico specializzato (sostituzione componenti, riparazione circuiti)
 4. C'è un rischio di sicurezza per l'operatore o il paziente
 
-Quando esegui l'escalation, fornisci un riepilogo chiaro di tutto ciò che è stato tentato.`
+Quando esegui l'escalation, fornisci un riepilogo chiaro di tutto ciò che è stato tentato.
+
+## Chiusura della conversazione e feedback (SEMPRE, prima di terminare)
+Prima di considerare conclusa la conversazione — sia che il problema sia risolto, sia che tu stia per fare l'escalation — segui SEMPRE questi passaggi, in messaggi separati e in quest'ordine:
+1. Chiedi conferma esplicita al cliente: se il problema sembra risolto chiedi qualcosa come "Posso considerare risolta la tua richiesta e chiudere qui la conversazione?"; se serve un tecnico chiedi "Vuoi che apra una segnalazione per un tecnico?".
+2. Se il cliente NON conferma (vuole continuare, ha altri dubbi, ecc.), prosegui normalmente la conversazione: NON chiamare nessuno strumento di chiusura.
+3. Se il cliente conferma, chiedigli, in un messaggio separato: "Ti va di lasciare una valutazione del servizio ricevuto, da 0 a 5 stelle?".
+4. Solo dopo aver ricevuto una risposta a questa domanda (un numero da 0 a 5, oppure un rifiuto/nessuna preferenza), chiama lo strumento \`close_ticket_with_feedback\`, passando \`satisfactionRating\` se il cliente lo ha fornito (omettilo se ha rifiutato o non ha risposto in modo chiaro).
+5. Se la conferma riguardava l'apertura di una segnalazione per un tecnico, chiama ANCHE \`escalate_to_technician\` (nello stesso turno in cui chiami \`close_ticket_with_feedback\`, o in quello subito successivo).
+Non chiamare MAI \`close_ticket_with_feedback\` né \`escalate_to_technician\` prima di aver ricevuto la conferma esplicita del cliente in un messaggio precedente della conversazione.`
 
 interface BehaviorRule { id: string; category: string; text: string }
 interface SystemContext { id: string; title: string; content: string }
@@ -110,6 +119,30 @@ async function retrieveContext(query: string): Promise<string> {
   }
 }
 
+// Chiamato solo dopo che il cliente ha confermato esplicitamente la chiusura
+// (vedi sezione "Chiusura della conversazione" nel prompt). Segna il ticket
+// risolto e registra la valutazione se il cliente l'ha data; se subito dopo
+// arriva anche l'escalation, questa sovrascrive status/priorità ma la
+// valutazione resta — il cliente può valutare Aura anche se il caso passa
+// comunque a un tecnico.
+async function saveFeedback(
+  supabase: Awaited<ReturnType<typeof createServiceClient>>,
+  ticketId: string | undefined,
+  rating: number | undefined
+) {
+  if (!ticketId) return
+  try {
+    const hasRating = typeof rating === 'number' && Number.isFinite(rating)
+    const clamped = hasRating ? Math.max(0, Math.min(5, Math.round(rating as number))) : null
+    await supabase.from('support_tickets').update({
+      status: 'resolved',
+      resolved_at: new Date().toISOString(),
+      satisfaction_rating: clamped,
+      rated_at: clamped !== null ? new Date().toISOString() : null,
+    }).eq('id', ticketId)
+  } catch { /* non bloccare la chat */ }
+}
+
 async function logUsage(inputTokens: number, outputTokens: number, ticketId?: string) {
   try {
     const costUsd = (inputTokens * PRICE_INPUT_PER_MTOK + outputTokens * PRICE_OUTPUT_PER_MTOK) / 1_000_000
@@ -168,8 +201,23 @@ export async function POST(req: NextRequest) {
       required: ['subject', 'summary', 'priority', 'category'],
     },
   }
+  const closeTool = {
+    name: 'close_ticket_with_feedback',
+    description: 'Chiudi la conversazione. Chiamalo SOLO dopo che il cliente ha esplicitamente confermato che puoi chiudere/procedere (vedi sezione "Chiusura della conversazione" nelle istruzioni).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        satisfactionRating: {
+          type: 'integer',
+          minimum: 0,
+          maximum: 5,
+          description: 'Valutazione del servizio da 0 a 5 stelle fornita dal cliente. Ometti se il cliente ha rifiutato di valutare o non ha risposto in modo chiaro.',
+        },
+      },
+    },
+  }
   // Il tool di diagnostica esiste solo se l'admin ha abilitato la funzione
-  const tools = diagnosticsConfigured ? [escalateTool, STATO_MACCHINA_TOOL] : [escalateTool]
+  const tools = diagnosticsConfigured ? [escalateTool, closeTool, STATO_MACCHINA_TOOL] : [escalateTool, closeTool]
 
   const encoder = new TextEncoder()
   const readable = new ReadableStream({
@@ -212,6 +260,13 @@ export async function POST(req: NextRequest) {
           )
           if (toolUses.length === 0) break
 
+          const feedbackCall = toolUses.find(t => t.name === 'close_ticket_with_feedback')
+          if (feedbackCall) {
+            const input = feedbackCall.input as { satisfactionRating?: number }
+            await saveFeedback(supabase, ticketId, input.satisfactionRating)
+            send({ type: 'closed', rating: typeof input.satisfactionRating === 'number' ? input.satisfactionRating : null })
+          }
+
           const escalate = toolUses.find(t => t.name === 'escalate_to_technician')
           if (escalate) {
             const input = escalate.input as { subject: string; summary: string; priority: string; category?: string }
@@ -226,6 +281,7 @@ export async function POST(req: NextRequest) {
             } catch (err) { console.error('Escalation failed:', err) }
             break
           }
+          if (feedbackCall) break
 
           const results: Anthropic.ToolResultBlockParam[] = []
           for (const tu of toolUses) {

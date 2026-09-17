@@ -1,44 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest } from 'next/server'
-import type { SupabaseClient } from '@supabase/supabase-js'
+import { chunkText, insertChunks } from '@/lib/knowledge'
 
 export const maxDuration = 30
-
-function chunkText(text: string): string[] {
-  const chunks: string[] = []
-  let start = 0
-  while (start < text.length) {
-    const end = Math.min(start + 800, text.length)
-    chunks.push(text.slice(start, end).trim())
-    if (end >= text.length) break
-    start += 700
-  }
-  return chunks.filter(c => c.length > 50)
-}
-
-async function insertChunks(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: SupabaseClient<any>,
-  docId: string,
-  title: string,
-  chunks: string[]
-) {
-  const rows = chunks.map((content, i) => ({
-    document_id: docId,
-    title: `${title} (parte ${i + 1})`,
-    content,
-  }))
-  for (let i = 0; i < rows.length; i += 50) {
-    const { error } = await supabase.from('knowledge_chunks').insert(rows.slice(i, i + 50))
-    if (error) throw new Error(`Chunk insert: ${error.message}`)
-  }
-  const { error: updErr } = await supabase
-    .from('knowledge_documents')
-    .update({ status: 'ready', chunk_count: rows.length })
-    .eq('id', docId)
-  if (updErr) throw new Error(`Status update: ${updErr.message}`)
-  console.log('[KB-UPLOAD] insertChunks done, chunks:', rows.length)
-}
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient()

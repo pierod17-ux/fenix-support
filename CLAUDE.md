@@ -159,6 +159,54 @@ il messaggio parlando invece di scrivere.
   `onend` di un motore vero): pulsante compare, avvia `start()` con la lingua attesa, il testo riconosciuto
   arriva nella textarea, il pulsante torna allo stato normale dopo `onend`, nessun invio automatico.
 
+## Link come fonte extra per la Knowledge Base
+Richiesta del titolare (2026-09-18): oltre ai file caricati, l'admin può aggiungere l'URL di una pagina
+web (es. un manuale online, una guida d'uso) come fonte per il RAG — utile per dare supporto anche
+sull'utilizzo della macchina, non solo sulla diagnosi guasti.
+- `lib/knowledge.ts`: `chunkText()`/`insertChunks()` (estratti da `api/knowledge/upload`, ora condivisi
+  con `api/knowledge/link` — stessa indicizzazione per entrambe le fonti, l'AI in RAG non distingue da
+  dove viene il contenuto), `htmlToText()` (estrazione testo via regex, niente libreria di parsing HTML
+  per un caso d'uso così semplice — non gestisce SPA che caricano il contenuto via JS), `isSafeExternalUrl()`.
+- Route `app/api/knowledge/link` (POST, admin-only): valida l'URL (solo `http`/`https`, blocca
+  localhost/IP privati/`.local`/`.internal` — guardia SSRF di base; **non protegge da DNS rebinding**,
+  limite accettato perché l'URL lo sceglie un admin autenticato, non un cliente anonimo), scarica la
+  pagina (timeout 15s, User-Agent dedicato), estrae il testo, chunka e indicizza come i documenti.
+  Con `documentId` nel body **aggiorna** un link già esistente invece di duplicarlo (cancella i vecchi
+  chunk e reindicizza) — usato dal pulsante ↻ "aggiorna" per contenuti online che cambiano nel tempo.
+- `knowledge_documents.source_type` (`'file'` | `'link'`) e `.source_url` distinguono le due fonti;
+  `knowledge_chunks` resta identica per entrambe. La eliminazione (`api/knowledge/[id]`) già gestiva
+  `file_url` opzionale, quindi funziona invariata sui link (nessun oggetto storage da rimuovere).
+- UI: `components/admin/DocumentUpload.tsx` ha un toggle File/Link nello stesso pannello "Aggiungi
+  contenuto"; `components/admin/KnowledgeDocList.tsx` mostra un'icona diversa (globo) e l'URL al posto
+  del tipo file per i link, più il pulsante ↻ di aggiornamento (solo per i link).
+
+## Chiusura conversazione e feedback cliente (0-5 stelle)
+Richiesta del titolare (2026-09-18): prima di aprire un ticket per un tecnico o considerare risolta e
+chiusa una chat, Aura deve sempre chiedere conferma al cliente; se il cliente conferma, le chiede anche
+una valutazione del servizio da 0 a 5 stelle, salvata per le statistiche in Analytics.
+- **Puramente guidato dal prompt** (`BASE_SYSTEM_PROMPT` in `app/api/chat/route.ts`, sezione "Chiusura
+  della conversazione e feedback"): niente stato lato server per il botta-e-risposta — è il modello a
+  seguire l'ordine "chiedi conferma → se sì chiedi il voto → solo dopo chiama lo strumento". Nessun
+  meccanismo impedisce all'AI di sbagliare l'ordine: è affidabilità del prompt, non un vincolo tecnico.
+- Nuovo tool `close_ticket_with_feedback` (`satisfactionRating` 0-5 opzionale, omesso se il cliente
+  rifiuta di valutare): **sempre registrato** (non dipende da `diagnosticsConfigured`, a differenza di
+  `stato_macchina`). Il modello può chiamarlo da solo (problema risolto, nessuna escalation) oppure
+  insieme a `escalate_to_technician` nello stesso giro (problema che richiede comunque un tecnico) — in
+  quel caso `escalate_to_technician` sovrascrive status/priorità del ticket ma la valutazione resta: il
+  cliente valuta l'aiuto di Aura fino a quel momento, non il tecnico che segue dopo.
+- `saveFeedback()`: marca il ticket `status: 'resolved'`, `resolved_at`, e se presente una valutazione
+  imposta `satisfaction_rating` (clampato 0-5) e `rated_at`; altrimenti li lascia `null` (permesso dato,
+  voto rifiutato — non è un mancato voto per errore, va distinto da "nessuna chiusura ancora avvenuta").
+- Evento SSE `closed` (`{ rating: number | null }`), analogo a `escalation` ma per la chiusura senza
+  tecnico: in `ChatInterface.tsx` nasconde l'input (stessa condizione che già nascondeva l'input dopo
+  `escalated`, ora `(!escalated && !chatClosed) || directChatActive`) e mostra `ClosedCard` (stelle se
+  presente un voto). Se arrivano **entrambi** gli eventi nello stesso giro (chiusura + escalation), la UI
+  privilegia sempre `EscalationCard` — il cliente deve vedere che c'è comunque un tecnico coinvolto.
+- Colonne `support_tickets.satisfaction_rating` (smallint 0-5, check) e `.rated_at` (schema in
+  `full_schema.sql`, applicate anche al DB live). Statistiche in `/admin/analytics` (media, distribuzione
+  per stella, % ticket valutati sul totale del periodo) — stessa finestra "ultimi 30 giorni" del resto
+  della pagina.
+
 ## Pattern critici — leggere sempre prima di toccare le API routes
 
 ```
@@ -244,6 +292,10 @@ app/
     direct-chat/           → gestione chat diretta tecnico↔cliente
     technicians/           → CRUD tecnici + inviti + reset password
     auth/forgot-password/  → recupero password pubblico (invia email di reset)
+    knowledge/
+      upload/               → carica ed indicizza un file (PDF/TXT)
+      link/                 → scarica indicizza una pagina web (fonte extra RAG, admin)
+      [id]/                 → elimina un documento/link della Knowledge Base
     config/
       import-document/     → analizza un file e PROPONE regole/contesti (admin, non scrive)
       check-conflicts/     → segnala contraddizioni/duplicati tra regole candidate ed esistenti (admin)
@@ -264,6 +316,7 @@ components/
 lib/
   voice.ts                 → speak()/stopSpeaking(): sintesi vocale lato browser, gratis (Web Speech API)
   speech-input.ts          → startListening()/stopListening(): dettatura del messaggio, gratis (Web Speech API)
+  knowledge.ts             → chunkText()/insertChunks()/htmlToText(): indicizzazione condivisa file+link KB
   diagnostics.ts           → fetchMachineStatus(), tool stato_macchina, prompt diagnostica
   direct-chat.ts           → tecnici di turno, risoluzione token (invito/cliente), presa in carico atomica
   format.ts                → formatInt(): numeri deterministici (mai toLocaleString nei render)
@@ -312,6 +365,9 @@ supabase/
 - ✅ RAG su knowledge base (documenti + ticket risolti)
 - ✅ Diagnostica remota Evolution dal seriale (tool `stato_macchina`), abilitabile dall'admin
 - ✅ Voce di Aura (TTS via Web Speech API del browser): lettura automatica, disattivabile, gratis
+- ✅ Dettatura vocale del messaggio cliente (STT via Web Speech API del browser), gratis
+- ✅ Link come fonte extra per la Knowledge Base, oltre ai file caricati (supporto anche sull'uso macchina)
+- ✅ Conferma cliente + valutazione 0-5 stelle prima di chiudere/escalare una chat, statistiche in Analytics
 
 ## Automazioni infra
 - **pg_cron** job `on-call-check` (ogni minuto) → POST `/api/cron/on-call` con header `x-cron-secret` (env `CRON_SECRET`). Dedup in `on_call_notifications`. Ora in Europe/Rome.

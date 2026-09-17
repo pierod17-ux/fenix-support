@@ -13,6 +13,8 @@ interface Doc {
   chunk_count: number
   created_at: string
   description?: string | null
+  source_type?: 'file' | 'link'
+  source_url?: string | null
 }
 
 const statusColor: Record<string, { bg: string; text: string }> = {
@@ -27,6 +29,7 @@ const statusLabel: Record<string, string> = {
 export default function KnowledgeDocList({ docs: initial }: { docs: Doc[] }) {
   const [docs, setDocs] = useState(initial)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState<string | null>(null)
   const router = useRouter()
 
   async function handleDelete(id: string) {
@@ -40,6 +43,28 @@ export default function KnowledgeDocList({ docs: initial }: { docs: Doc[] }) {
       }
     } finally {
       setDeleting(null)
+    }
+  }
+
+  // Ri-scarica e re-indicizza un link già presente (i contenuti online cambiano)
+  async function handleRefreshLink(doc: Doc) {
+    if (!doc.source_url) return
+    setRefreshing(doc.id)
+    try {
+      const res = await fetch('/api/knowledge/link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentId: doc.id, title: doc.title, url: doc.source_url }),
+      })
+      if (res.ok) router.refresh()
+      else {
+        const d = await res.json().catch(() => ({}))
+        alert(d.error ?? 'Aggiornamento fallito')
+      }
+    } catch {
+      alert('Errore di rete. Riprova.')
+    } finally {
+      setRefreshing(null)
     }
   }
 
@@ -70,6 +95,7 @@ export default function KnowledgeDocList({ docs: initial }: { docs: Doc[] }) {
       background: 'var(--surface)', borderRadius: 20,
       boxShadow: 'var(--shadow-md)', overflow: 'hidden', marginTop: 20,
     }}>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       <div style={{
         padding: '16px 20px', borderBottom: '1px solid var(--border)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -82,6 +108,8 @@ export default function KnowledgeDocList({ docs: initial }: { docs: Doc[] }) {
         {docs.map((doc, i) => {
           const sc = statusColor[doc.status] ?? { bg: 'var(--surface-2)', text: 'var(--text-secondary)' }
           const isDeleting = deleting === doc.id
+          const isLink = doc.source_type === 'link'
+          const isRefreshing = refreshing === doc.id
           return (
             <div key={doc.id} style={{
               display: 'flex', alignItems: 'center', gap: 14,
@@ -95,18 +123,25 @@ export default function KnowledgeDocList({ docs: initial }: { docs: Doc[] }) {
                 background: 'var(--surface-2)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.8" strokeLinecap="round">
-                  <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9L13 2z"/>
-                  <path d="M13 2v7h7"/>
-                </svg>
+                {isLink ? (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.8" strokeLinecap="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M2 12h20M12 2a15 15 0 010 20M12 2a15 15 0 000 20"/>
+                  </svg>
+                ) : (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.8" strokeLinecap="round">
+                    <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9L13 2z"/>
+                    <path d="M13 2v7h7"/>
+                  </svg>
+                )}
               </div>
 
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {doc.title}
                 </p>
-                <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                  {doc.file_type?.toUpperCase() ?? 'FILE'}
+                <p style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {isLink ? (doc.source_url ?? 'LINK') : (doc.file_type?.toUpperCase() ?? 'FILE')}
                   {doc.chunk_count ? ` · ${doc.chunk_count} chunk` : ''}
                   {' · '}{format(new Date(doc.created_at), 'dd MMM yyyy', { locale: it })}
                 </p>
@@ -123,6 +158,25 @@ export default function KnowledgeDocList({ docs: initial }: { docs: Doc[] }) {
               }}>
                 {statusLabel[doc.status] ?? doc.status}
               </span>
+
+              {isLink && (
+                <button
+                  onClick={() => handleRefreshLink(doc)}
+                  disabled={isRefreshing || isDeleting}
+                  title="Ri-scarica e reindicizza il link"
+                  style={{
+                    width: 32, height: 32, borderRadius: 8, border: 'none',
+                    background: 'transparent', cursor: isRefreshing ? 'default' : 'pointer', flexShrink: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: 'var(--text-tertiary)',
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+                    style={{ animation: isRefreshing ? 'spin 0.8s linear infinite' : 'none' }}>
+                    <path d="M13.5 8a5.5 5.5 0 10-1.6 3.89M13.5 4v3.5H10"/>
+                  </svg>
+                </button>
+              )}
 
               <button
                 onClick={() => handleDelete(doc.id)}

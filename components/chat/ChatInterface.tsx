@@ -41,6 +41,12 @@ export default function ChatInterface() {
   // false = nessun tecnico di turno al momento dell'escalation: niente chat diretta
   const [onCall, setOnCall] = useState(true)
   const [onCallCount, setOnCallCount] = useState<number | null>(null)
+  // Conversazione chiusa da Aura (confermata dal cliente) SENZA escalation:
+  // chatClosed=true e closedRating la valutazione data (null se il cliente
+  // ha rifiutato di valutare). Se arriva anche 'escalation', quella ha
+  // priorità nella UI (vedi render della card più sotto).
+  const [chatClosed, setChatClosed] = useState(false)
+  const [closedRating, setClosedRating] = useState<number | null>(null)
   // id del tecnico gia' annunciato al cliente ("X ha preso in carico")
   const announcedTechRef = useRef<string | null>(null)
   const [directChatActive, setDirectChatActive] = useState(false)
@@ -306,6 +312,9 @@ export default function ChatInterface() {
               if (typeof parsed.onCall === 'boolean') setOnCall(parsed.onCall)
               if (typeof parsed.onCallCount === 'number') setOnCallCount(parsed.onCallCount)
               setEscalated(true)
+            } else if (parsed.type === 'closed') {
+              setClosedRating(typeof parsed.rating === 'number' ? parsed.rating : null)
+              setChatClosed(true)
             }
           } catch { /* partial JSON */ }
         }
@@ -511,7 +520,7 @@ export default function ChatInterface() {
           </div>
         )}
 
-        {escalated && (
+        {escalated ? (
           <EscalationCard
             ticketId={ticketId}
             onRequestChat={requestDirectChat}
@@ -519,13 +528,15 @@ export default function ChatInterface() {
             onCall={onCall}
             onCallCount={onCallCount}
           />
+        ) : chatClosed && (
+          <ClosedCard ticketId={ticketId} rating={closedRating} />
         )}
 
         <div ref={bottomRef} />
       </div>
 
-      {/* Input — hidden after escalation unless direct chat is active */}
-      {(!escalated || directChatActive) && (
+      {/* Input — hidden dopo escalation o chiusura confermata, salvo chat diretta attiva */}
+      {((!escalated && !chatClosed) || directChatActive) && (
         <div style={{
           flexShrink: 0,
           padding: '10px 12px',
@@ -847,6 +858,58 @@ function EscalationCard({
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#34c759' }} />
           <span style={{ fontSize: 13, color: '#34c759', fontWeight: 500 }}>Chat diretta attiva</span>
         </div>
+      )}
+    </div>
+  )
+}
+
+// Conversazione chiusa da Aura senza escalation, dopo conferma esplicita del
+// cliente (vedi prompt in app/api/chat/route.ts). `rating` è null se il
+// cliente ha rifiutato di valutare il servizio.
+function ClosedCard({ ticketId, rating }: { ticketId: string | null; rating: number | null }) {
+  return (
+    <div style={{
+      background: 'var(--surface)', borderRadius: 16,
+      padding: 20, textAlign: 'center',
+      boxShadow: 'var(--shadow-md)',
+      border: '1px solid var(--border)',
+      margin: '8px 0',
+    }}>
+      <div style={{
+        width: 48, height: 48, borderRadius: '50%',
+        background: 'rgba(52,199,89,0.10)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        margin: '0 auto 12px',
+      }}>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#34c759" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M20 6L9 17l-5-5"/>
+        </svg>
+      </div>
+      <h3 style={{ fontWeight: 600, fontSize: 16, color: 'var(--text-primary)', marginBottom: 6 }}>
+        Conversazione conclusa
+      </h3>
+      <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: rating !== null ? 12 : 0 }}>
+        Grazie per aver usato l&apos;assistenza Fenix! Se in futuro avrai bisogno di aiuto, apri pure una nuova chat.
+      </p>
+      {rating !== null && (
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 4 }}>
+          {[0, 1, 2, 3, 4].map(i => (
+            <svg key={i} width="18" height="18" viewBox="0 0 24 24"
+              fill={i < rating ? '#ff9500' : 'none'} stroke="#ff9500" strokeWidth="1.5">
+              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+            </svg>
+          ))}
+        </div>
+      )}
+      {ticketId && (
+        <span style={{
+          display: 'inline-block', marginTop: 14,
+          fontSize: 12, fontFamily: 'monospace', fontWeight: 600,
+          color: 'var(--accent)', background: 'var(--accent-light)',
+          padding: '4px 10px', borderRadius: 8,
+        }}>
+          Ticket #{ticketId.slice(0, 8).toUpperCase()}
+        </span>
       )}
     </div>
   )
